@@ -1,0 +1,209 @@
+/* Claude Desk design tokens. style.css reads these; change a value here, never in a consumer.
+   Dark is a near-black scheme with one red accent; light is derived from it on neutral greys. */
+
+:root {
+  color-scheme: light;
+
+  /* surfaces. -0 is the chrome (activity bar, tab bar, status bar), paper the main area,
+     surface the sidebar and every popover, input and menu. */
+  --surface-0: #EBEBEB;
+  --paper: #FAFAFA;
+  --surface: #F3F3F3;
+  --surface-2: #E8E8E8;
+  --surface-3: #DDDDDD;
+  --surface-sel: #D4D4D4;
+  --line: #E0E0E0;
+  --line-strong: #CCCCCC;
+  --term-bg: #FFFFFF;
+  --term-fg: #1F1F1F;
+  --term-cursor: #C4182F;
+  --term-selection: rgba(196, 24, 47, .2);
+
+  /* ink */
+  --ink: #1F1F1F;
+  --ink-2: #4A4A4A;
+  --ink-3: #666666;
+  --ink-4: #A0A0A0;
+
+  /* the one accent. Not one of the account colours. */
+  --accent: #C4182F;
+  --accent-ink: #FFFFFF;
+  --accent-hover: #E0203A;
+  --link: #A3122A;
+  --accent-soft: color-mix(in oklab, var(--accent) 14%, var(--paper));
+  --accent-line: color-mix(in oklab, var(--accent) 45%, var(--line));
+  --focus-ring: color-mix(in oklab, var(--accent) 55%, transparent);
+  --match: rgba(255, 176, 46, .33);
+
+  /* session states. Colour says how urgent, the glyph says which state. */
+  --st-working: var(--accent);
+  --st-waiting: #B45309;
+  --st-finished: #2E7D4F;
+  --st-failed: #B45309;
+  --st-idle: var(--ink-3);
+  --st-exited: var(--ink-3);
+  --st-offline: var(--ink-4);
+  --st-shell: var(--ink-2);
+  --st-elsewhere: var(--ink-3);
+  --st-starting: var(--ink-2);
+  --st-waiting-soft: color-mix(in oklab, var(--st-waiting) 12%, var(--paper));
+  --st-finished-soft: color-mix(in oklab, var(--st-finished) 12%, var(--paper));
+
+  /* accounts, as in src/main/consts.js. The rule and chip use the -strong value in light
+     mode so a pastel still reads on paper; dark mode uses the raw value. */
+  --acc-0: #9A9A9A; --acc-1: #8FD694; --acc-2: #8ED3D9; --acc-3: #F2C77A; --acc-4: #D7A6E8; --acc-5: #FF8A9B; --acc-6: #9AB8F5;
+  --acc-0-strong: color-mix(in oklab, var(--acc-0) 70%, var(--ink));
+  --acc-1-strong: color-mix(in oklab, var(--acc-1) 62%, var(--ink));
+  --acc-2-strong: color-mix(in oklab, var(--acc-2) 62%, var(--ink));
+  --acc-3-strong: color-mix(in oklab, var(--acc-3) 65%, var(--ink));
+  --acc-4-strong: color-mix(in oklab, var(--acc-4) 65%, var(--ink));
+  --acc-5-strong: color-mix(in oklab, var(--acc-5) 65%, var(--ink));
+  --acc-6-strong: color-mix(in oklab, var(--acc-6) 62%, var(--ink));
+  --acc-chip-ink: #1F1D1A;
+  --acc-mix: 62%;
+
+  /* type */
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", Consolas, "Courier New", monospace;
+  --term-lh: 1.1;
+  --fs-11: 11px; --fs-12: 12px; --fs-13: 13px; --fs-14: 14px; --fs-16: 16px; --fs-20: 20px; --fs-28: 28px;
+  --lh-ui: 1.35;
+
+  /* xterm ANSI palette, read by applyTheme() once per theme change. Light is VS Code Light+. */
+  --ansi-black: #000000; --ansi-red: #CD3131; --ansi-green: #00BC00; --ansi-yellow: #949800;
+  --ansi-blue: #0451A5; --ansi-magenta: #BC05BC; --ansi-cyan: #0598BC; --ansi-white: #555555;
+  --ansi-bright-black: #666666; --ansi-bright-red: #CD3131; --ansi-bright-green: #14CE14; --ansi-bright-yellow: #B5BA00;
+  --ansi-bright-blue: #0451A5; --ansi-bright-magenta: #BC05BC; --ansi-bright-cyan: #0598BC; --ansi-bright-white: #A5A5A5;
+  --lh-display: 1.15;
+  --track-caps: .08em;
+
+  /* spacing, 4 based with two half steps */
+  --sp-1: 2px; --sp-2: 4px; --sp-3: 6px; --sp-4: 8px; --sp-5: 12px; --sp-6: 16px; --sp-7: 24px; --sp-8: 32px;
+
+  /* radii */
+  --r-1: 4px; --r-2: 6px; --r-3: 10px; --r-full: 999px;
+
+  /* layout */
+  --activity-w: 48px;
+  --sidebar-w: 300px;
+  --sidebar-min: 220px;
+  --sidebar-max: 480px;
+  --tabbar-h: 36px;
+  --statusbar-h: 24px;
+  --row-h: 28px;
+  --session-row-h: 42px;
+  --rule-w: 3px;
+
+  /* motion. Everything is under 250 ms except the two ambient loops. */
+  --t-micro: 120ms;
+  --t-enter: 180ms;
+  --t-leave: 220ms;
+  --t-place: 180ms;
+  --loop-working: 1.6s;
+  --loop-waiting: 2.4s;
+  --ease-standard: cubic-bezier(.2, 0, 0, 1);
+  --ease-exit: cubic-bezier(.4, 0, 1, 1);
+  --ease-enter: cubic-bezier(0, 0, .2, 1);
+
+  /* elevation */
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, .14), 0 1px 2px rgba(0, 0, 0, .08);
+  --shadow-toast: 0 6px 20px rgba(0, 0, 0, .16);
+}
+
+:root[data-theme="dark"] { color-scheme: dark; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: dark; } }
+
+:root[data-theme="dark"] {
+  --surface-0: #060606;
+  --paper: #0C0C0C;
+  --surface: #0A0A0A;
+  --surface-2: #1A1A1A;
+  --surface-3: #222222;
+  --surface-sel: #333333;
+  --line: #262626;
+  --line-strong: #333333;
+  --term-bg: #0C0C0C;
+  --term-fg: #E6E1E2;
+  --term-cursor: #FF2E4D;
+  --term-selection: rgba(255, 46, 77, .27);
+  --ink: #E4E0E1;
+  --ink-2: #CFC8CA;
+  --ink-3: #8C8C8C;
+  --ink-4: #666666;
+  --accent: #FF2E4D;
+  --accent-ink: #FFFFFF;
+  --accent-hover: #FF5C73;
+  --link: #FF5C73;
+  --focus-ring: rgba(255, 46, 77, .53);
+  --match: rgba(255, 176, 46, .33);
+  --st-waiting: #FFB02E;
+  --st-finished: #7FC79A;
+  --st-failed: #FFB02E;
+  --acc-0-strong: var(--acc-0);
+  --acc-1-strong: var(--acc-1);
+  --acc-2-strong: var(--acc-2);
+  --acc-3-strong: var(--acc-3);
+  --acc-4-strong: var(--acc-4);
+  --acc-5-strong: var(--acc-5);
+  --acc-6-strong: var(--acc-6);
+  --acc-mix: 100%;
+  --ansi-black: #1F1F1F; --ansi-red: #FF8A9B; --ansi-green: #8FD694; --ansi-yellow: #F2C77A;
+  --ansi-blue: #9AB8F5; --ansi-magenta: #D7A6E8; --ansi-cyan: #8ED3D9; --ansi-white: #E6E1E2;
+  --ansi-bright-black: #8A8A8A; --ansi-bright-red: #FF5C73; --ansi-bright-green: #A9E5AD; --ansi-bright-yellow: #FFD99A;
+  --ansi-bright-blue: #B5CCFA; --ansi-bright-magenta: #E6C2F2; --ansi-bright-cyan: #AEE4E8; --ansi-bright-white: #F7F4F4;
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, .6), 0 1px 2px rgba(0, 0, 0, .5);
+  --shadow-toast: 0 6px 20px rgba(0, 0, 0, .6);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface-0: #060606;
+    --paper: #0C0C0C;
+    --surface: #0A0A0A;
+    --surface-2: #1A1A1A;
+    --surface-3: #222222;
+    --surface-sel: #333333;
+    --line: #262626;
+    --line-strong: #333333;
+    --term-bg: #0C0C0C;
+    --term-fg: #E6E1E2;
+    --term-cursor: #FF2E4D;
+    --term-selection: rgba(255, 46, 77, .27);
+    --ink: #E4E0E1;
+    --ink-2: #CFC8CA;
+    --ink-3: #8C8C8C;
+    --ink-4: #666666;
+    --accent: #FF2E4D;
+    --accent-ink: #FFFFFF;
+    --accent-hover: #FF5C73;
+    --link: #FF5C73;
+    --focus-ring: rgba(255, 46, 77, .53);
+    --match: rgba(255, 176, 46, .33);
+    --st-waiting: #FFB02E;
+    --st-finished: #7FC79A;
+    --st-failed: #FFB02E;
+    --acc-0-strong: var(--acc-0);
+    --acc-1-strong: var(--acc-1);
+    --acc-2-strong: var(--acc-2);
+    --acc-3-strong: var(--acc-3);
+    --acc-4-strong: var(--acc-4);
+    --acc-5-strong: var(--acc-5);
+    --acc-6-strong: var(--acc-6);
+    --acc-mix: 100%;
+  --acc-mix: 100%;
+    --ansi-black: #1F1F1F; --ansi-red: #FF8A9B; --ansi-green: #8FD694; --ansi-yellow: #F2C77A;
+    --ansi-blue: #9AB8F5; --ansi-magenta: #D7A6E8; --ansi-cyan: #8ED3D9; --ansi-white: #E6E1E2;
+    --ansi-bright-black: #8A8A8A; --ansi-bright-red: #FF5C73; --ansi-bright-green: #A9E5AD; --ansi-bright-yellow: #FFD99A;
+    --ansi-bright-blue: #B5CCFA; --ansi-bright-magenta: #E6C2F2; --ansi-bright-cyan: #AEE4E8; --ansi-bright-white: #F7F4F4;
+    --shadow-pop: 0 8px 24px rgba(0, 0, 0, .6), 0 1px 2px rgba(0, 0, 0, .5);
+    --shadow-toast: 0 6px 20px rgba(0, 0, 0, .6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --t-micro: 0ms; --t-enter: 0ms; --t-leave: 0ms; --t-place: 0ms;
+    --loop-working: 0s; --loop-waiting: 0s;
+  }
+}

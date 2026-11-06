@@ -1,0 +1,85 @@
+{
+  "name": "claude-desk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Run several Claude Code sessions side by side on Windows, across any number of accounts",
+  "author": "1oNN",
+  "license": "MIT",
+  "repository": "github:1oNN/claude_desk",
+  "homepage": "https://github.com/1oNN/claude_desk#readme",
+  "productName": "Claude Desk",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "dist": "electron-builder --win --publish never",
+    "release": "electron-builder --win --publish always"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
+    "electron-updater": "6.8.11",
+    "node-pty": "1.1.0",
+    "ssh2": "1.17.0"
+  },
+  "devDependencies": {
+    "electron": "45.2.1",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "io.github.1onn.claudedesk",
+    "productName": "Claude Desk",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**",
+      "!src/assets/_archive",
+      "package.json",
+      "!docs",
+      "!reports",
+      "!state",
+      "!tools",
+      "!test",
+      "!**/*.md",
+      "!**/*.pdb",
+      "!node_modules/node-pty/prebuilds/darwin-*",
+      "!node_modules/node-pty/prebuilds/win32-arm64",
+      "!node_modules/node-pty/third_party/conpty/*/win10-arm64"
+    ],
+    "npmRebuild": false,
+    "asarUnpack": [
+      "node_modules/node-pty/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "src/assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "artifactName": "Claude-Desk-Setup-${version}.${ext}",
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "1oNN",
+      "repo": "claude_desk",
+      "releaseType": "release"
+    }
+  },
+  "allowScripts": {
+    "electron@45.2.1": true,
+    "node-pty@1.1.0": true,
+    "ssh2": false,
+    "electron-winstaller": false
+  }
+}

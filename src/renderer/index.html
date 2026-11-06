@@ -1,0 +1,264 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none';">
+<title>Claude Desk</title>
+<link rel="stylesheet" href="../../node_modules/@xterm/xterm/css/xterm.css">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="g-working" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 1-9 9"/></symbol>
+  <symbol id="g-waiting" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M12 8.5v3.5M12 14.2v.3"/></symbol>
+  <symbol id="g-finished" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.6 2.5L16 9.5"/></symbol>
+  <symbol id="g-failed" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></symbol>
+  <symbol id="g-idle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/></symbol>
+  <symbol id="g-exited" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="g-offline" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-dasharray="3 3"/></symbol>
+  <symbol id="g-starting" viewBox="0 0 24 24"><path d="M6 3h12M6 21h12M8 3v3l4 6-4 6v3M16 3v3l-4 6 4 6v3"/></symbol>
+  <symbol id="g-elsewhere" viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></symbol>
+  <symbol id="g-shell" viewBox="0 0 24 24"><path d="m5 6 7 6-7 6M13 19h7"/></symbol>
+  <symbol id="i-desk" viewBox="0 0 24 24"><path d="M3 10.5 12 4l9 6.5"/><path d="M5 9.5V20h14V9.5"/><path d="M10 20v-6h4v6"/></symbol>
+  <symbol id="i-projects" viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v10A1.5 1.5 0 0 1 19.5 20h-15A1.5 1.5 0 0 1 3 18.5z"/></symbol>
+  <symbol id="i-attention" viewBox="0 0 24 24"><path d="M6 17V11a6 6 0 0 1 12 0v6l1.5 2h-15z"/><path d="M10 21h4"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 4v16M3 12h18"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M12 15h5"/></symbol>
+  <symbol id="i-say" viewBox="0 0 24 24"><path d="M4 5h16v11h-7l-5 4v-4H4z"/><path d="M8 9h8M8 12h5"/></symbol>
+  <symbol id="i-cmd" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v10A1.5 1.5 0 0 1 19.5 20h-15A1.5 1.5 0 0 1 3 18.5z"/></symbol>
+</svg>
+<div id="app">
+  <nav id="activity" aria-label="Views">
+    <button class="act" data-nav="home" title="Desk (home)" aria-label="Desk home"><svg class="g"><use href="#i-desk"/></svg></button>
+    <button class="act" data-nav="projects" title="Projects" aria-label="Projects"><svg class="g"><use href="#i-projects"/></svg></button>
+    <button class="act" data-nav="attention" title="Needs you" aria-label="Needs you"><svg class="g"><use href="#i-attention"/></svg><span class="badge" id="attn-badge" aria-hidden="true" hidden></span></button>
+    <span class="spacer"></span>
+    <button class="act" data-nav="settings" title="Settings (Ctrl+,)" aria-label="Settings"><svg class="g"><use href="#i-settings"/></svg></button>
+  </nav>
+  <aside id="sidebar">
+    <div id="sidebar-scroll" role="group" aria-label="Projects and sessions"></div>
+    <section id="settings" hidden>
+      <h2>Settings</h2>
+      <div class="setting" id="setup">
+        <div class="caps">Setup</div>
+        <p>Where Desk looks for things on this PC. Saved in the state folder; a DESK_* environment variable wins over it.</p>
+        <div class="field"><span class="fl">Projects</span><span class="fv" id="set-projects"></span><button id="set-projects-btn" aria-label="Change the projects folder">Change</button></div>
+        <div class="field"><span class="fl">Claude Code</span><span class="fv" id="set-claude"></span><button id="set-claude-btn" aria-label="Change the Claude Code path">Change</button></div>
+        <div class="field"><span class="fl">Shell</span><span class="fv" id="set-pwsh"></span><button id="set-pwsh-btn" aria-label="Change the shell path">Change</button></div>
+        <div class="btns"><button id="open-state">Open state folder</button><button id="open-log">Open log</button></div>
+      </div>
+      <div class="setting">
+        <div class="caps">Accounts</div>
+        <p>Each account is a Claude Code sign-in with its own folder. Sign in runs Claude Code's own login in a pane; Desk never reads or stores a token.</p>
+        <div class="acc-list" id="acc-list"></div>
+        <div class="btns"><button id="acc-add">Add account</button><button id="acc-setup">Run setup again</button></div>
+      </div>
+      <div class="setting">
+        <div class="caps">Context</div>
+        <p>What Desk adds to each session's system prompt. It is sent with every message.</p>
+        <div class="seg context" role="group" aria-label="Session context">
+          <button data-context="off">Nothing</button>
+          <button data-context="name">Name</button>
+          <button data-context="team">Name and team</button>
+        </div>
+        <p class="context-note"></p>
+        <label class="check"><input type="checkbox" class="usage"> Show usage limits (a status line Desk gives its sessions, no tokens)</label>
+        <label class="check"><input type="checkbox" class="carry"> Tell a resumed session to carry on after a crash or restart</label>
+      </div>
+      <div class="setting">
+        <div class="caps">Updates</div>
+        <p id="upd-version"></p>
+        <label class="check"><input type="checkbox" class="updates"> Check GitHub for a new version and install it when Desk closes</label>
+        <button id="upd-check">Check now</button>
+      </div>
+      <div class="setting">
+        <div class="caps">Start</div>
+        <p>Which saved sessions start with Desk. A Claude session takes 400 MB or more of RAM, a shell about 100 MB. The rest wait in their pane with a Resume button.</p>
+        <div class="seg" id="resume-seg" role="group" aria-label="Sessions to start with Desk">
+          <button data-resume="current">Open panes only</button>
+          <button data-resume="all">All</button>
+          <button data-resume="none">None</button>
+        </div>
+        <p id="resume-note"></p>
+        <p>Graphics. Software painting drops the GPU process, about 100 MB, and uses the CPU instead. The window looks the same. Applies at the next start.</p>
+        <div class="seg" id="gpu-seg" role="group" aria-label="Graphics">
+          <button data-gpu="on">GPU</button>
+          <button data-gpu="off">Software</button>
+        </div>
+      </div>
+      <div class="setting">
+        <div class="caps">Text</div>
+        <p>Every part zooms on its own. Hold Ctrl and turn the mouse wheel over a terminal to size that terminal's text and nothing else, or over the sidebar, the top bars, the status bar or home to zoom only that part. Ctrl+= and Ctrl+- do the same for what has focus, and Ctrl+0 puts it back.</p>
+        <p>Window, everything at once (Ctrl+Shift+= and Ctrl+Shift+-, or the buttons at the bottom right).</p>
+        <div class="seg" id="scale-seg" role="group" aria-label="Window zoom">
+          <button data-scale="0.9">Small</button>
+          <button data-scale="1">Normal</button>
+          <button data-scale="1.2">Large</button>
+          <button data-scale="1.4">Larger</button>
+        </div>
+        <p>Terminal text, for every terminal you have not sized on its own.</p>
+        <div class="seg" id="tfont-seg" role="group" aria-label="Terminal text size">
+          <button data-font="12">12</button>
+          <button data-font="13">13</button>
+          <button data-font="14">14</button>
+          <button data-font="16">16</button>
+          <button data-font="18">18</button>
+        </div>
+        <div class="btns"><button id="zoom-all-set">Reset every zoom</button></div>
+      </div>
+      <div class="setting">
+        <div class="caps">Appearance</div>
+        <div class="seg theme" id="theme-seg" role="group" aria-label="Theme">
+          <button data-theme="">System</button>
+          <button data-theme="light">Light</button>
+          <button data-theme="dark">Dark</button>
+        </div>
+        <p>Accent, for the focused pane, buttons and the cursor.</p>
+        <div class="swatches" role="group" aria-label="Accent colour"></div>
+        <p>Terminal font. A font that is not installed falls back to Cascadia Mono.</p>
+        <select class="tfam" aria-label="Terminal font"></select>
+      </div>
+      <div class="setting">
+        <div class="caps">Sidebar</div>
+        <p>Drag its right edge to resize. Ctrl+B hides and shows it, Ctrl+Shift+B or the panel button at the bottom left hides the icons too.</p>
+        <button id="sb-reset">Reset width</button>
+      </div>
+      <div class="setting">
+        <div class="caps">Attention</div>
+        <p>A session that needs you shows on the bell, in the window title and at the top of Desk home with how long it has waited.</p>
+        <label class="check"><input type="checkbox" id="flash-toggle"> Flash the taskbar button when Desk is in the background</label>
+        <label class="check"><input type="checkbox" id="notify-toggle"> Desktop notification as well</label>
+        <p id="notify-note"></p>
+        <button id="notify-test">Send a test notification</button>
+      </div>
+      <div class="setting">
+        <div class="caps">Keys</div>
+        <dl class="keys" id="keys-dl">
+          <dt>Ctrl+K</dt><dd>command palette: say, new session, panes, views, theme</dd>
+          <dt>Ctrl+P</dt><dd>jump to a session or project</dd>
+          <dt>Ctrl+Shift+N</dt><dd>new Claude session in this project</dd>
+          <dt>Ctrl+Shift+T</dt><dd>new shell in this project</dd>
+          <dt>Ctrl+1 to 8</dt><dd>focus that pane</dd>
+          <dt>Ctrl+Shift+1 to 8</dt><dd>one to eight panes</dd>
+          <dt>Ctrl+Tab</dt><dd>next session in the pane</dd>
+          <dt>Ctrl+Shift+Tab</dt><dd>previous session in the pane</dd>
+          <dt>Ctrl+B</dt><dd>hide or show the sidebar</dd>
+          <dt>Ctrl+Shift+B</dt><dd>hide or show the whole left panel, icons too</dd>
+          <dt>Ctrl+,</dt><dd>settings</dd>
+          <dt>Ctrl+wheel</dt><dd>zoom what is under the pointer: one terminal, the sidebar, the top bars, the status bar or home. The rest stays as it is</dd>
+          <dt>Ctrl+= and Ctrl+-</dt><dd>zoom what has focus, the terminal you are typing in; Ctrl+0 puts it back</dd>
+          <dt>Ctrl+Shift+= and Ctrl+Shift+-</dt><dd>zoom the whole window; Ctrl+Shift+0 back to 100%</dd>
+          <dt>Ctrl+C</dt><dd>in a terminal, copies when text is selected, otherwise stops the program as usual</dd>
+          <dt>Ctrl+V or right click</dt><dd>paste into the terminal; right click copies instead when text is selected</dd>
+          <dt>Ctrl+click</dt><dd>open a web link printed in a terminal</dd>
+          <dt>Ctrl+/ or F1</dt><dd>this list as a card</dd>
+          <dt>Esc</dt><dd>close a menu, the palette or the keys card, or clear the toasts</dd>
+          <dt>In the sidebar</dt><dd>Up and Down move, Enter opens, Right reaches a row's buttons or expands, Left collapses, Delete stops</dd>
+        </dl>
+        <p>Everything else reaches the terminal. F12 opens the developer tools.</p>
+        <button id="keys-show">Show as a card</button>
+      </div>
+    </section>
+    <div id="sash" role="separator" aria-orientation="vertical" aria-label="Sidebar width" tabindex="0" title="Drag to resize, double click to reset. Left and right arrows resize from the keyboard"></div>
+  </aside>
+  <main id="main">
+    <div id="projbar" hidden>
+      <svg class="g"><use href="#i-folder"/></svg><span id="pb-name"></span><span id="pb-mach"></span><span id="pb-dir"></span>
+      <span class="right"><span id="pb-count"></span><span id="pb-panes"></span></span>
+    </div>
+    <div id="tabbar">
+      <div id="tabstrip"><div id="tabs" role="tablist" aria-label="Sessions in this project"></div></div>
+      <div id="tab-actions">
+        <button id="tabmenu-btn" class="ibtn" title="All sessions in this project" aria-label="All sessions in this project" aria-haspopup="menu" hidden><svg class="g"><use href="#i-chev"/></svg></button>
+        <button id="panes-btn" class="ibtn text" title="How many terminals to show side by side, 1 to 8 (Ctrl+Shift+1 to 8)" aria-label="Panes" aria-haspopup="menu"><svg class="g"><use href="#i-grid"/></svg><span id="panes-n">1 pane</span><svg class="g"><use href="#i-chev"/></svg></button>
+        <span class="sep"></span>
+        <button id="accbtn" class="ibtn" title="Account for new sessions" aria-label="Account for new sessions" aria-haspopup="menu"><span class="acc"></span><span class="acc-name"></span><svg class="g"><use href="#i-chev"/></svg></button>
+        <button id="new-session" class="ibtn text" title="New Claude session in this project (Ctrl+Shift+N)" aria-label="New Claude session"><svg class="g"><use href="#i-plus"/></svg>session</button>
+        <button id="new-shell" class="ibtn text" title="Plain terminal in this project (Ctrl+Shift+T)" aria-label="New shell"><svg class="g"><use href="#i-terminal"/></svg>shell</button>
+        <button id="say-btn" class="ibtn text" title="One message to the idle Claude sessions in the projects you tick" aria-label="Say to Claude sessions"><svg class="g"><use href="#i-say"/></svg>say</button>
+      </div>
+      <div id="accpop" class="pop" role="menu" hidden></div>
+      <div id="tabpop" class="pop" role="menu" hidden></div>
+      <div id="newpop" class="pop" role="menu" aria-label="New Claude session as" hidden><div class="caps">New Claude session as</div><div class="rows"></div></div>
+      <div id="panespop" class="pop" role="menu" aria-label="Panes" hidden>
+        <div class="caps">Panes</div>
+        <div class="pgrid">
+          <div class="row split" data-n="1" role="menuitem" tabindex="0" title="One pane (Ctrl+Shift+1)"><span class="mini lay n1"><i></i></span><span>1</span></div>
+          <div class="row split" data-n="2" role="menuitem" tabindex="0" title="Two panes (Ctrl+Shift+2)"><span class="mini lay n2"><i></i><i></i></span><span>2</span></div>
+          <div class="row split" data-n="3" role="menuitem" tabindex="0" title="Three panes (Ctrl+Shift+3)"><span class="mini lay n3"><i></i><i></i><i></i></span><span>3</span></div>
+          <div class="row split" data-n="4" role="menuitem" tabindex="0" title="Four panes (Ctrl+Shift+4)"><span class="mini lay n4"><i></i><i></i><i></i><i></i></span><span>4</span></div>
+          <div class="row split" data-n="5" role="menuitem" tabindex="0" title="Five panes (Ctrl+Shift+5)"><span class="mini lay n5"><i></i><i></i><i></i><i></i><i></i></span><span>5</span></div>
+          <div class="row split" data-n="6" role="menuitem" tabindex="0" title="Six panes (Ctrl+Shift+6)"><span class="mini lay n6"><i></i><i></i><i></i><i></i><i></i><i></i></span><span>6</span></div>
+          <div class="row split" data-n="7" role="menuitem" tabindex="0" title="Seven panes (Ctrl+Shift+7)"><span class="mini lay n7"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span>7</span></div>
+          <div class="row split" data-n="8" role="menuitem" tabindex="0" title="Eight panes (Ctrl+Shift+8)"><span class="mini lay n8"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span>8</span></div>
+        </div>
+      </div>
+    </div>
+    <div id="slots" class="lay n1"></div>
+    <section id="home" hidden>
+      <h1 id="home-h1">Claude Desk</h1>
+      <p class="sub" id="home-sub"></p>
+      <div id="home-setup" class="card" hidden></div>
+      <div id="home-list"></div>
+    </section>
+  </main>
+  <footer id="status">
+    <button id="panel-btn" class="zbtn" title="Hide the left panel (Ctrl+Shift+B)" aria-label="Hide the left panel" aria-pressed="false"><svg class="g"><use href="#i-panel"/></svg></button>
+    <span class="it"><b>PC</b> <span id="st-pc"></span> <button id="mem-now" class="link" title="Measure the memory Desk's sessions use now">measure</button> <button id="mem-toggle" class="link" title="Show memory per session in the sidebar">per session</button></span>
+    <span class="it" id="st-laptop"><b>Laptop</b> <span></span></span>
+    <span class="it" id="st-count"></span>
+    <span class="it"><button id="cmd-btn" class="link" title="Every command, searchable (Ctrl+K)">Commands</button> <button id="keys-btn" class="link" title="Keyboard shortcuts (Ctrl+/ or F1)">Shortcuts</button></span>
+    <span class="right">
+      <span class="it" id="st-attn"></span>
+      <button id="zoom-all" class="link" title="Put the sidebar, the bars, home and every terminal back to 100%" hidden></button>
+      <span class="it zoom" role="group" aria-label="Window zoom"><button id="zoom-out" class="zbtn" title="Zoom the whole window out (Ctrl+Shift+-)" aria-label="Zoom the window out"><svg class="g"><use href="#i-minus"/></svg></button><button id="zoom-val" class="zbtn val" title="Window zoom. Click for 100% (Ctrl+Shift+0)" aria-label="Reset the window zoom to 100%">100%</button><button id="zoom-in" class="zbtn" title="Zoom the whole window in (Ctrl+Shift+=)" aria-label="Zoom the window in"><svg class="g"><use href="#i-plus"/></svg></button></span>
+      <span class="it" id="st-age"></span>
+    </span>
+  </footer>
+  <div id="pool"></div>
+  <div id="panemenu" class="pop" role="menu" aria-label="Pane" hidden></div>
+  <div id="toasts" role="status" aria-live="polite"></div>
+  <div id="zoom-hud" role="status" aria-live="polite" hidden></div>
+  <div id="keys" hidden>
+    <div class="card" role="dialog" aria-modal="true" aria-labelledby="keys-h">
+      <h2 id="keys-h">Keys</h2>
+      <div id="keys-body"></div>
+      <p>Everything else reaches the terminal. F12 opens the developer tools.</p>
+      <button id="keys-close">Close</button>
+    </div>
+  </div>
+  <div id="welcome" hidden>
+    <div class="card" role="dialog" aria-modal="true" aria-labelledby="wl-title">
+      <div id="wl-steps" role="list"></div>
+      <h2 id="wl-title"></h2>
+      <div id="wl-body"></div>
+      <div class="wl-foot"><button id="wl-skip">Skip setup</button><span class="spacer"></span><button id="wl-back">Back</button><button id="wl-next" class="primary">Next</button></div>
+    </div>
+  </div>
+  <div id="palette" hidden>
+    <div class="pal" role="dialog" aria-label="Command palette">
+      <div class="pal-top"><span id="pal-mode" class="chip"></span><input id="pal-input" autocomplete="off" spellcheck="false" aria-label="Search" aria-controls="pal-list"></div>
+      <div id="pal-list" role="listbox"></div>
+      <div id="pal-foot"></div>
+    </div>
+  </div>
+</div>
+<script src="../../node_modules/@xterm/xterm/lib/xterm.js"></script>
+<script src="../../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+<script src="dom.js"></script>
+<script src="terminals.js"></script>
+<script src="sidebar.js"></script>
+<script src="app.js"></script>
+<script src="setup.js"></script>
+</body>
+</html>
