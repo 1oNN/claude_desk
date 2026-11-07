@@ -123,3 +123,77 @@ footer { border-top: 1px solid var(--line); color: var(--ink-3); font-size: 13px
   th, td { padding: 6px 6px; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+
+/* landing page: one wide column, the video is the first thing after the pitch */
+.landing main { padding-bottom: 40px; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+.intro { padding-top: 56px; padding-bottom: 28px; }
+.intro h1 { font-size: 46px; line-height: 1.08; letter-spacing: -.02em; max-width: 16ch; margin-bottom: 16px; }
+.intro .lede { font-size: 18px; max-width: 54ch; margin-bottom: 26px; }
+.cta { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn {
+  display: inline-flex; align-items: center; min-height: 40px; padding: 0 18px; border-radius: 5px;
+  border: 1px solid var(--line); color: var(--ink); text-decoration: none; font-weight: 600; font-size: 14px;
+}
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.08); background: var(--accent); }
+.btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.meta { color: var(--ink-3); font-size: 13px; margin: 16px 0 0; max-width: none; }
+
+.tour { padding-bottom: 24px; }
+.screen { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #0C0C0C; }
+.screen video { display: block; width: 100%; height: auto; aspect-ratio: 1600 / 950; }
+/* chapter buttons double as the progress bar: each fills as its part of the video plays */
+.chapters { list-style: none; padding: 0; margin: 10px 0 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.chapters button {
+  position: relative; width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  padding: 9px 10px 11px; background: var(--surface); border: 1px solid var(--line); border-radius: 5px;
+  color: var(--ink-2); font: 13px/1.3 var(--font-ui); text-align: left; cursor: pointer; overflow: hidden;
+}
+.chapters button:hover { color: var(--ink); border-color: var(--ink-3); }
+.chapters button[aria-current] { color: var(--ink); border-color: var(--accent); }
+.chapters .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chapters .tm { color: var(--ink-3); font: 12px var(--font-mono); font-variant-numeric: tabular-nums; }
+.chapters i { position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: var(--accent); transform-origin: left; transform: scaleX(var(--p, 0)); }
+.aside { color: var(--ink-3); font-size: 13px; margin: 10px 0 0; max-width: none; }
+
+.feature { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 8fr); gap: 40px; align-items: center; padding-top: 44px; padding-bottom: 44px; border-top: 1px solid var(--line); }
+.tour + .feature { border-top: 0; margin-top: 32px; }
+.feature h2 { margin: 0 0 10px; padding: 0; font-size: 24px; }
+.feature p { color: var(--ink-2); }
+.feature figure { margin: 0; }
+
+.leaves { padding-top: 44px; border-top: 1px solid var(--line); }
+.leaves h2, .install h2 { margin-top: 0; padding-top: 0; }
+.leaves ul { list-style: none; padding: 0; margin: 14px 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 40px; }
+.leaves li { color: var(--ink-2); max-width: none; padding-left: 14px; border-left: 2px solid var(--line); }
+.leaves li b { color: var(--ink); }
+
+.install { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; padding-top: 52px; }
+.install pre { margin: 12px 0; }
+.install > div { min-width: 0; }
+
+.more { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding-top: 40px; }
+.more a { display: block; padding: 16px 18px; border: 1px solid var(--line); border-radius: 6px; text-decoration: none; color: var(--ink-2); font-size: 14px; }
+.more a:hover { border-color: var(--ink-3); }
+.more b { display: block; color: var(--ink); font-size: 16px; margin-bottom: 4px; }
+.more span { display: block; }
+
+@media (max-width: 960px) {
+  .feature { grid-template-columns: 1fr; gap: 18px; }
+  .chapters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .wrap { padding: 0 16px; }
+  .intro { padding-top: 32px; }
+  .intro h1 { font-size: 32px; }
+  .intro .lede { font-size: 16px; }
+  .leaves ul, .install, .more { grid-template-columns: 1fr; }
+  .install { gap: 8px; }
+  .feature { padding-top: 32px; padding-bottom: 32px; }
+}
+@media (max-width: 420px) {
+  .chapters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .btn { flex: 1 1 100%; justify-content: center; }
+}

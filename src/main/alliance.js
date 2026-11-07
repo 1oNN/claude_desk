@@ -63,4 +63,20 @@ function transcriptExists(account, cwd, sid) {
   try { return fs.statSync(transcriptPath(account, cwd, sid)).size > 0; } catch { return false; }
 }
 
-module.exports = { getPrompt, configDir, transcriptPath, isInterrupted, transcriptExists };
+// Removes a session's transcript and the folder Claude Code keeps beside it (subagents, tool output).
+// The folder is left alone if anything in it is a link, so a junction can never lead the delete elsewhere.
+function deleteTranscript(account, cwd, sid) {
+  if (!/^[0-9a-f-]{8,}$/i.test(String(sid || ''))) return { removed: [], error: 'no session id' };
+  const file = transcriptPath(account, cwd, sid), dir = file.slice(0, -'.jsonl'.length), removed = [];
+  const hasLink = d => fs.readdirSync(d, { withFileTypes: true }).some(e => e.isSymbolicLink() || (e.isDirectory() && hasLink(path.join(d, e.name))));
+  try { fs.unlinkSync(file); removed.push(file); } catch (e) { if (e.code !== 'ENOENT') return { removed, error: e.message }; }
+  try {
+    const st = fs.lstatSync(dir);
+    if (st.isSymbolicLink() || !st.isDirectory()) return { removed, error: 'folder beside the transcript is not a plain folder, left alone' };
+    if (hasLink(dir)) return { removed, error: 'folder beside the transcript holds a link, left alone' };
+    fs.rmSync(dir, { recursive: true }); removed.push(dir);
+  } catch (e) { if (e.code !== 'ENOENT') return { removed, error: e.message }; }
+  return { removed };
+}
+
+module.exports = { getPrompt, configDir, transcriptPath, isInterrupted, transcriptExists, deleteTranscript };

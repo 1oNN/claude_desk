@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('desk', {
   resumeSession: id => ipcRenderer.invoke('desk:resume', id),
   stopSession: id => ipcRenderer.invoke('desk:stop', id),
   forgetSession: id => ipcRenderer.invoke('desk:forget', id),
+  closeSession: (id, opts) => ipcRenderer.invoke('desk:close', id, opts),
   attach: (id, cols, rows) => ipcRenderer.invoke('desk:attach', id, cols, rows),
   write: (id, data) => ipcRenderer.send('desk:write', id, data),
   resize: (id, cols, rows) => ipcRenderer.send('desk:resize', id, cols, rows),

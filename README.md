@@ -184,6 +184,14 @@ focus; inside a terminal Alt stays with Claude Code.
 | Window | new window, move pane to a new window or another window, the window list |
 | Help | welcome, keys, these docs, release notes, report an issue, the log and the state folder |
 
+### Closing a session
+
+The power icon in a pane head, or Close session in the pane menu, stops the session and
+removes it from Desk. Close and delete transcript, in the pane menu, also deletes the
+conversation file and the folder beside it. Both ask twice, and the second check starts on
+Cancel, so Enter twice closes nothing. The pane's x only closes the pane and leaves the session
+running. Shells and remote sessions have no delete option.
+
 ### Keys
 
 Ctrl+/ or F1 shows the full list in the app.

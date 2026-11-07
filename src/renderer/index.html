@@ -43,6 +43,8 @@
   <symbol id="i-max" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
   <symbol id="i-restore" viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></symbol>
   <symbol id="i-popout" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-8 8"/><path d="M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8"/><path d="M7 6.3a7.5 7.5 0 1 0 10 0"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5M10 11v5M14 11v5"/></symbol>
   <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v10A1.5 1.5 0 0 1 19.5 20h-15A1.5 1.5 0 0 1 3 18.5z"/></symbol>
 </svg>
 <header id="titlebar">
@@ -166,6 +168,15 @@
       <div id="keys-body"></div>
       <p>Everything else reaches the terminal. F12 opens the developer tools.</p>
       <button id="keys-close">Close</button>
+    </div>
+  </div>
+  <div id="endask" hidden>
+    <div class="card" role="alertdialog" aria-modal="true" aria-labelledby="ea-h" aria-describedby="ea-p">
+      <p class="ea-step" id="ea-step"></p>
+      <h2 id="ea-h"></h2>
+      <p id="ea-p"></p>
+      <label class="check" id="ea-del-row"><input type="checkbox" id="ea-del"><span>Also delete its transcript</span></label>
+      <div class="acts"><button id="ea-cancel">Cancel</button><button id="ea-ok" class="primary"></button></div>
     </div>
   </div>
   <div id="welcome" role="dialog" aria-modal="true" aria-labelledby="wl-title" hidden>

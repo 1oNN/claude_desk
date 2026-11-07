@@ -49,6 +49,14 @@ Claude Code process; Desk only draws its terminal.</p>
   <li><b>Stop</b> keeps the session. <b>Resume</b> brings the same conversation back by its
   session id. <b>Forget</b> removes it from Desk; transcripts stay where Claude Code puts
   them.</li>
+  <li id="close"><b>Close</b> is the power icon in a pane head, or Close session in the pane
+  menu. It stops the session and removes it from Desk, and it asks twice. The pane's x only
+  closes the pane; the session keeps running in the sidebar.</li>
+  <li><b>Close and delete transcript</b> (pane menu, or the box in the first check) also
+  deletes the conversation file and the folder beside it, for good. The second check starts
+  on Cancel, so pressing Enter twice closes nothing. Shells and sessions on another machine
+  have no delete option, and the delete will not follow a link out of the account
+  folder.</li>
   <li><b>Say to Claude sessions</b> (Edit menu) sends one message to the idle Claude sessions
   in the projects you tick. Busy sessions are skipped and named, because typed text would
   answer whatever prompt they have open.</li>

@@ -450,6 +450,25 @@ async function forgetSession(id) {
   stateMod.save(state);
 }
 
+// close = stop and forget; with transcript, the conversation file goes too, once the process has let go of it
+async function closeSession(id, opts = {}) {
+  const s = byId(id); if (!s) return { ok: false, error: 'no such session' };
+  const del = opts.transcript && s.machine === 'pc' && s.kind !== 'shell' && s.sid;
+  if (opts.transcript && !del) return { ok: false, error: s.kind === 'shell' ? 'a shell has no transcript' : 'only sessions on this PC can delete their transcript' };
+  await stopSession(id);
+  for (let i = 0; i < 50 && pc.isLive(id); i++) await new Promise(r => setTimeout(r, 100));
+  await forgetSession(id);
+  if (!del) return { ok: true };
+  let r = { removed: [] };
+  for (let i = 0; i < 10; i++) {
+    r = alliance.deleteTranscript(s.account, s.cwd || s.project, s.sid);
+    if (!r.error || !/EBUSY|EPERM/.test(r.error)) break;
+    await new Promise(res => setTimeout(res, 300));
+  }
+  log('closed and deleted transcript', s.name, r.removed.length, r.error || '');
+  return { ok: !r.error, removed: r.removed.length, error: r.error };
+}
+
 async function sayToProject(projectKey, text) {
   const sent = [], skipped = [];
   const sessions = state.sessions.filter(s => key(s.machine, s.project) === projectKey && s.kind !== 'shell');
@@ -650,6 +669,7 @@ handle('desk:start', (_e, opts) => { const s = createSession(startOpts(opts)); l
 handle('desk:resume', (_e, id) => { const s = byId(id); if (s) launch(s, { resume: true }); });
 handle('desk:stop', (_e, id) => stopSession(id));
 handle('desk:forget', (_e, id) => forgetSession(id));
+handle('desk:close', (_e, id, opts) => closeSession(id, opts || {}));
 handle('desk:attach', async (e, id, cols, rows) => {
   const s = byId(id); if (!s) return { replay: '' };
   // one window shows a session at a time, so two never fight over its size; the one that had it lets go
@@ -819,6 +839,7 @@ if (DEBUG_DIR) {
     resume: async c => { const s = byId(c.id); if (s) launch(s, { resume: true }); return s; },
     stop: async c => stopSession(c.id),
     forget: async c => forgetSession(c.id),
+    close: async c => closeSession(c.id, { transcript: !!c.transcript }),
     say: async c => sayToProject(c.projectKey, c.text),
     write: async c => { const s = byId(c.id); if (s.machine === 'pc') pc.write(c.id, c.text); else laptop.write(c.id, c.text); return true; },
     memory: async () => { await samplePcMemory(); await pollLaptop(); return snapshot(); },

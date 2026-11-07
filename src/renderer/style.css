@@ -464,6 +464,16 @@ button:disabled { color: var(--ink-4); cursor: default; }
 #keys .keys dt { font-family: var(--font-mono); color: var(--ink); white-space: nowrap; }
 #keys .keys dd { margin: 0; color: var(--ink-2); }
 #keys p { color: var(--ink-3); font-size: var(--fs-12); margin: var(--sp-5) 0; }
+#endask { position: fixed; inset: 0; z-index: 46; background: color-mix(in oklab, var(--surface-0) 55%, transparent); display: flex; justify-content: center; align-items: center; }
+#endask[hidden] { display: none; }
+#endask .card { width: 440px; max-width: calc(100vw - 32px); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-3); box-shadow: var(--shadow-pop); padding: var(--sp-6); animation: pal-in var(--t-enter) var(--ease-enter); }
+#endask .ea-step { margin: 0 0 var(--sp-2); font-size: var(--fs-12); color: var(--ink-3); }
+#endask h2 { font: 600 var(--fs-16)/1.3 var(--font-display); margin: 0 0 var(--sp-3); overflow-wrap: anywhere; }
+#endask #ea-p { margin: 0 0 var(--sp-4); font-size: var(--fs-13); color: var(--ink-2); }
+#endask .acts { display: flex; justify-content: flex-end; gap: var(--sp-3); margin-top: var(--sp-5); }
+#endask.danger .card { border-color: var(--st-failed); }
+#endask.danger button.primary { background: var(--st-failed); border-color: var(--st-failed); color: var(--surface-0); }
+.slot-head .pa button.end:hover { color: var(--st-failed); }
 
 /* first-run setup */
 /* first-run setup: a page under the title bar, the step rail on the left */

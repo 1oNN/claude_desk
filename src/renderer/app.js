@@ -751,6 +751,8 @@ const paneMenu = (() => {
       el.appendChild(act('empty', 'i-minus', 'Take the session out', 'it keeps running as a tab'));
       el.appendChild(act('out', 'i-popout', 'Move to a new window', 'Ctrl+Shift+M'));
       for (const w of (snap.windows || []).filter(w => w.wid !== myWid)) { const r = act('to', 'i-popout', w.n === 1 ? 'Move back to the main window' : `Move to window ${w.n}`, (projectByKey(w.current) || {}).name || ''); r.dataset.wid = w.wid; el.appendChild(r); }
+      el.appendChild(act('end', 'i-power', 'Close session', 'asks twice'));
+      if (s.kind !== 'shell' && s.machine === 'pc') el.appendChild(act('enddel', 'i-trash', 'Close and delete transcript', 'asks twice'));
     }
     if (v.n < MAXP) el.appendChild(act('split', 'i-split', 'Split: one more pane', `${v.n} panes to ${v.n + 1}`));
     if (v.n > 1 || v.restore) el.appendChild(act('max', v.n > 1 ? 'i-max' : 'i-restore', v.n > 1 ? 'Maximise this pane' : 'Restore the panes', v.n > 1 ? 'the others keep running as tabs' : `back to ${v.restore.n}`));
@@ -1003,7 +1005,7 @@ function slotHead() {
   });
   const pa = Dom.h('span', 'pa'); pa.setAttribute('role', 'group'); pa.setAttribute('aria-label', 'Pane');
   pa.append(btn('split', null, 'Split: one more pane', 'i-split'), btn('max', 'mx', 'Maximise this pane', 'i-max'),
-    btn('out', null, 'Move to a new window (Ctrl+Shift+M)', 'i-popout'), btn('close', null, 'Close this pane', 'i-x'));
+    btn('out', null, 'Move to a new window (Ctrl+Shift+M)', 'i-popout'), btn('end', 'end', 'Close this session (asks twice)', 'i-power'), btn('close', null, 'Close this pane (the session keeps running)', 'i-x'));
   pa.addEventListener('click', e => {
     const b = e.target.closest('button'), slot = h.parentElement;
     if (b && slot) paneAct(b.dataset.z, Number(slot.dataset.i));
@@ -1019,6 +1021,7 @@ function paneAct(a, i, wid) {
   else if (a === 'out') { if (id) desk.moveSession(id, 'new'); }
   else if (a === 'to') { if (id) desk.moveSession(id, Number(wid)); }
   else if (a === 'close') closePane(i);
+  else if (a === 'end' || a === 'enddel') { if (id) endAsk.ask(id, a === 'enddel'); }
 }
 // one pane fills the area; the same button puts the old layout back, with this session where it was
 function toggleMax(i) {
@@ -1316,6 +1319,62 @@ const keysPop = {
   },
 };
 POPS.push(keysPop);
+
+// closing a session asks twice: once to pick close or close and delete, then once more to be sure
+const endAsk = (() => {
+  const el = $('#endask'), del = $('#ea-del');
+  let id = null, step = 1, back = null;
+  function paint() {
+    const s = sessionById(id); if (!s) { api.open(false); return; }
+    const claude = s.kind !== 'shell', canDel = claude && s.machine === 'pc', d = canDel && del.checked;
+    const busy = s.status === 'live' && s.state === 'working';
+    $('#ea-del-row').hidden = !canDel || step === 2;
+    el.classList.toggle('danger', d);
+    Dom.text($('#ea-step'), `Check ${step} of 2`);
+    if (step === 1) {
+      Dom.text($('#ea-h'), d ? `Close ${s.name} and delete its transcript?` : `Close ${s.name}?`);
+      Dom.text($('#ea-p'), d ? 'It stops, leaves Desk, and its conversation file is deleted from disk.'
+        : claude ? 'It stops and leaves Desk. The transcript stays on disk, so claude --resume can still open it.' : 'The shell stops and leaves Desk.');
+      Dom.text($('#ea-ok'), d ? 'Close and delete' : 'Close session');
+    } else {
+      Dom.text($('#ea-h'), d ? `Delete the transcript of ${s.name} for good?` : `Sure you want to close ${s.name}?`);
+      Dom.text($('#ea-p'), (busy ? 'It is working right now and that turn will be cut off. ' : '') + (d ? 'This cannot be undone: neither Desk nor Claude Code can bring the conversation back.' : 'It goes from the sidebar and the tabs.'));
+      Dom.text($('#ea-ok'), d ? 'Yes, delete it' : 'Yes, close it');
+    }
+  }
+  const api = {
+    isOpen: () => !el.hidden,
+    open(o) {
+      if (o || el.hidden) return;
+      el.hidden = true; id = null;
+      if (back && back.isConnected && back !== document.body) back.focus();
+      back = null;
+    },
+    ask(sid, withTranscript) {
+      for (const p of POPS) if (p !== api && p.isOpen()) p.open(false);
+      id = sid; step = 1; del.checked = !!withTranscript; back = document.activeElement;
+      el.hidden = false; paint(); $('#ea-ok').focus();
+    },
+  };
+  del.onchange = paint;
+  $('#ea-cancel').onclick = () => api.open(false);
+  // the second ask puts focus on Cancel, so a double Enter does not close anything
+  $('#ea-ok').onclick = () => {
+    if (step === 1) { step = 2; paint(); $('#ea-cancel').focus(); return; }
+    const s = sessionById(id), d = !!(s && s.kind !== 'shell' && s.machine === 'pc' && del.checked), sid = id;
+    api.open(false);
+    if (s) forget(sid, d);
+  };
+  el.addEventListener('mousedown', e => { if (e.target === e.currentTarget) api.open(false); });
+  el.addEventListener('keydown', e => {
+    if (e.key !== 'Tab') return;
+    const f = [...el.querySelectorAll('input:not([disabled]), button')].filter(x => x.offsetParent);
+    const i = f.indexOf(document.activeElement); e.preventDefault();
+    f[(i + (e.shiftKey ? -1 : 1) + f.length) % f.length].focus();
+  });
+  POPS.push(api);
+  return api;
+})();
 function toggleKeys() { keysPop.open(!keysPop.isOpen()); }
 $('#keys-btn').onclick = () => keysPop.open(true);
 $('#cmd-btn').onclick = () => openPalette('commands');
@@ -1387,8 +1446,10 @@ function closePane(i) {
   saveUi(); renderSlots(); renderTabs(); renderSidebar(true);
 }
 
-async function forget(id) {
-  await desk.forgetSession(id);
+// transcript undefined: forget as before; true or false: close through the two step ask
+async function forget(id, transcript) {
+  const r = transcript === undefined ? await desk.forgetSession(id) : await desk.closeSession(id, { transcript });
+  if (transcript) toast(r && r.ok ? 'Session closed and its transcript deleted' : `Session closed, but the transcript was not deleted: ${(r && r.error) || 'unknown error'}`, r && r.ok ? undefined : 'error');
   Terminals.dispose(id);
   delete ui.termZoom[id];
   for (const v of Object.values(ui.views)) if (v.slots) v.slots = v.slots.map(x => x === id ? null : x);
