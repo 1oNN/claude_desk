@@ -128,7 +128,7 @@ function resolve() {
 function appVersion() { try { return require('electron').app.getVersion(); } catch { return require('../../package.json').version; } }
 // what the renderer shows on the setup card and in Settings
 C.setup = () => ({
-  appName: C.APP_NAME, alliance: C.ALLIANCE, accounts: require('./accounts').ids(), firstRun: require('./accounts').isFirstRun(), claudeExe: C.CLAUDE_EXE, pwsh: C.PWSH, projectsRoot: C.PROJECTS_ROOT, resume: C.RESUME, gpu: C.GPU, context: C.CONTEXT, carryOn: C.CARRY, usage: C.SETTINGS.usage === 'off' ? 'off' : 'on', updates: C.SETTINGS.updates === 'off' ? 'off' : 'on', version: appVersion(),
+  appName: C.APP_NAME, alliance: C.ALLIANCE, accounts: require('./accounts').ids(), firstRun: require('./accounts').isFirstRun(), claudeExe: C.CLAUDE_EXE, pwsh: C.PWSH, projectsRoot: C.PROJECTS_ROOT, resume: C.RESUME, gpu: C.GPU, context: C.CONTEXT, carryOn: C.CARRY, usage: C.SETTINGS.usage === 'off' ? 'off' : 'on', updates: C.SETTINGS.updates === 'off' ? 'off' : 'on', oneLiner: C.SETTINGS.oneLiner === 'off' ? 'off' : 'on', version: appVersion(),
   stateDir: C.STATE_DIR, settingsFile: C.SETTINGS_FILE, found: { claude: isFile(C.CLAUDE_EXE), pwsh: isFile(C.PWSH), projects: isDir(C.PROJECTS_ROOT) },
   env: { claude: !!process.env.DESK_CLAUDE, pwsh: !!process.env.DESK_PWSH, projects: !!process.env.DESK_PROJECTS },
 });

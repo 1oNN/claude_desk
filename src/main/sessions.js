@@ -90,6 +90,9 @@ class PcSessions extends EventEmitter {
       args = ['-n', session.name];
       const sl = usage.settingsArg(session.account);
       if (sl) args.push('--settings', sl);
+      // alliance.py's status line keeps files other sessions read, so it still runs, quietly, every 30 s
+      const own = sl && C.ALLIANCE && usage.ownStatusCommand(session.account);
+      if (own) env.DESK_STATUS_CHAIN = own;
       const canResume = resume && alliance.transcriptExists(session.account, session.cwd, session.sid);
       args.push(canResume ? '--resume' : '--session-id', session.sid);
       if (prompt) args.push('--append-system-prompt', prompt);

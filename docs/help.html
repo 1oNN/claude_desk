@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Desk Help</title>
+<meta name="description" content="Privacy, memory, updates, data folders, a remote machine and troubleshooting for Claude Desk.">
+<link rel="icon" href="img/icon.svg">
+<link rel="stylesheet" href="site.css">
+<script>try { var t = localStorage.getItem('desk-docs-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
+</head>
+<body>
+<header class="bar">
+  <a class="home" href="index.html"><img src="img/icon.svg" alt=""><span>Claude Desk</span></a>
+  <nav><a href="index.html">Overview</a><a href="guide.html">Guide</a><a href="help.html" aria-current="page">Help</a></nav>
+  <div class="right">
+    <button id="theme" type="button" title="Switch light and dark">Theme</button>
+    <a class="gh" href="https://github.com/1oNN/claude_desk">GitHub</a>
+    <a class="dl" href="https://github.com/1oNN/claude_desk/releases">Download</a>
+  </div>
+</header>
+
+<div class="page">
+<aside class="toc">
+  <p>Help</p>
+  <a href="#privacy">Privacy</a>
+  <a href="#memory">Memory</a>
+  <a href="#updates">Updates</a>
+  <a href="#data">Settings and data</a>
+  <a href="#remote">A remote machine</a>
+  <a href="#trouble">Troubleshooting</a>
+  <a href="#issues">Known issues</a>
+  <a href="#report">Reporting a problem</a>
+</aside>
+<main>
+<h1>Help</h1>
+<p class="lede">What Desk sends, what it costs in memory, where it keeps things, and what to do
+when something goes wrong.</p>
+
+<h2 id="privacy">Privacy</h2>
+<p>Desk has no account, no telemetry and no server. It does not read or store Claude tokens.
+It makes two kinds of network connection, and only these:</p>
+<ul>
+  <li>the update check against <code>github.com/1oNN/claude_desk</code> releases, in the
+  installed app, unless you turn it off;</li>
+  <li>ssh to a remote machine, only if you set one up (<a href="#remote">below</a>).</li>
+</ul>
+<p>Claude Code itself talks to Anthropic as it always does.</p>
+
+<h2 id="memory">Memory</h2>
+<p>Measured on Windows 11 with this version, using Electron's own process metrics:</p>
+<table>
+  <thead><tr><th></th><th>Private memory</th><th>Working set</th></tr></thead>
+  <tbody>
+    <tr><td>Desk idle, no sessions</td><td class="num">about 200 MB</td><td class="num">about 510 MB</td></tr>
+    <tr><td>Each extra window</td><td class="num">about 45-50 MB</td><td class="num">about 124 MB</td></tr>
+    <tr><td>Each shell, in Desk's main process</td><td class="num">about 11 MB</td><td></td></tr>
+  </tbody>
+</table>
+<p>The sessions themselves are what fill memory. A Claude session is 400 MB or more and a
+shell about 100 MB; those two figures come from the previous version and were not measured
+again.</p>
+<ul>
+  <li>By default Desk starts only the sessions that were in the panes of the project you were
+  last on. The rest show a Resume button. Settings, Sessions, Start with Desk changes this.</li>
+  <li>A pane hidden for a minute drops its terminal buffer and gets the last 128 KB back when
+  shown again.</li>
+  <li>Settings, Sessions, Graphics set to Software drops the GPU process, about 100 MB.</li>
+  <li>Memory per session puts each session's size in the sidebar.</li>
+</ul>
+
+<h2 id="updates">Updates</h2>
+<p>The installed app checks GitHub Releases a little after it starts and every six hours after
+that. A new version downloads in the background and installs when you close Desk. Settings,
+Updates shows your version, has a Check now button and can turn the check off. A copy run
+from source never updates itself; use <code>git pull</code>.</p>
+
+<h2 id="data">Settings and data</h2>
+<p>Settings are saved in <code>settings.json</code> in Desk's data folder:</p>
+<ul>
+  <li>installed: <code>%APPDATA%\Claude Desk\</code></li>
+  <li>from source: <code>state\</code> in the repo folder</li>
+</ul>
+<p>That folder also holds <code>accounts.json</code>, <code>desk.json</code> (projects,
+sessions, windows and layout) and <code>desk.log</code>, which says what Desk did and why.
+Help, Open the state folder goes there.</p>
+<p>An environment variable wins over the saved value:</p>
+<table>
+  <thead><tr><th>Variable</th><th>Sets</th></tr></thead>
+  <tbody>
+    <tr><td><code>DESK_PROJECTS</code></td><td>the projects folder</td></tr>
+    <tr><td><code>DESK_CLAUDE</code></td><td>the Claude Code executable</td></tr>
+    <tr><td><code>DESK_PWSH</code></td><td>the shell</td></tr>
+    <tr><td><code>DESK_STATE_DIR</code></td><td>the data folder</td></tr>
+    <tr><td><code>DESK_NO_UPDATE</code></td><td>set to 1 to skip the update check</td></tr>
+  </tbody>
+</table>
+
+<h2 id="remote">A remote machine</h2>
+<p>Optional. Desk can also run sessions on a Linux or macOS machine over ssh, inside tmux, and
+show them next to your local ones. You need <code>ssh</code> key login, <code>tmux</code> and
+<code>claude</code> on that machine. Add these to <code>settings.json</code>:</p>
+<pre><code>{
+  "remoteHost": "mybox",
+  "remoteProjects": "projects",
+  "laptopAccounts": [1, 2]
+}</code></pre>
+<p><code>remoteHost</code> is a <code>Host</code> entry in your <code>~\.ssh\config</code>.
+<code>remoteProjects</code> is a folder under the remote home. <code>laptopAccounts</code> lists
+the account ids that may run there. Account 1 uses the remote's own <code>~/.claude</code>; any
+other account gets <code>~/.claude-desk/accounts/&lt;id&gt;</code> and signs in the first time it
+starts. Host keys are checked against your <code>known_hosts</code>.</p>
+
+<h2 id="trouble">Troubleshooting</h2>
+<h3>Claude Code was not found</h3>
+<p>Setup's Check step and the Welcome page say so. Install Claude Code so that
+<code>claude</code> works in a terminal, or set its path in Settings, Paths (or
+<code>DESK_CLAUDE</code>).</p>
+<h3>I cannot select text in a Claude pane</h3>
+<p>Claude Code turns on mouse reporting, so a plain drag goes to Claude Code. Hold
+<kbd>Shift</kbd> while you drag to select, then <kbd>Ctrl+C</kbd> or right click to copy.</p>
+<h3>An account shows no usage</h3>
+<p>That account has its own <code>statusLine</code> in its Claude Code settings, and Desk
+leaves it alone. Remove it there if you want Desk's usage bars.</p>
+<h3>A session says it is open elsewhere</h3>
+<p>It was started outside Desk in the same folder, or it is shown in another Desk window.
+Close the outside copy, or click the session to go to the window that has it.</p>
+<h3>The window is too small to use</h3>
+<p>Under 900 wide the sidebar opens over the panes; <kbd>Ctrl+B</kbd> toggles it. View, Reset
+zoom (<kbd>Ctrl+Shift+0</kbd>) puts the window zoom back to 100%.</p>
+
+<h2 id="issues">Known issues</h2>
+<table>
+  <tbody>
+    <tr><td>Windows only</td><td>The window frame, the shells and the account junctions are Windows code.</td></tr>
+    <tr><td>Unsigned installer</td><td>SmartScreen warns on first install until the app is code signed.</td></tr>
+    <tr><td>Mouse in Claude Code</td><td>Selecting text needs <kbd>Shift</kbd> held; right click pastes rather than opening a menu.</td></tr>
+    <tr><td>Memory</td><td>Each Claude session is its own process at 400 MB or more, so eight panes of Claude is several GB.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="report">Reporting a problem</h2>
+<p>Open an <a href="https://github.com/1oNN/claude_desk/issues">issue</a> with what you did,
+what you expected and what happened, and attach <code>desk.log</code> (Help, Open the log).
+For a security problem, see
+<a href="https://github.com/1oNN/claude_desk/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+
+<div class="next"><a href="guide.html">Back: guide</a><span></span></div>
+</main>
+</div>
+<footer>MIT licence. <a href="https://github.com/1oNN/claude_desk">github.com/1oNN/claude_desk</a></footer>
+<script>
+document.getElementById('theme').onclick = function () {
+  var d = document.documentElement, dark = d.dataset.theme ? d.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  d.dataset.theme = dark ? 'light' : 'dark';
+  try { localStorage.setItem('desk-docs-theme', d.dataset.theme); } catch (e) {}
+};
+</script>
+</body>
+</html>

@@ -16,6 +16,8 @@ const Terminals = (() => {
   let fontSize = 14, sizeOf = () => fontSize;
   let FONT = '"Cascadia Mono", Consolas, "Courier New", monospace';
   const HIDDEN_MS = 60 * 1000;
+  // output for a pane you are not typing in is joined and painted at most this often; 8 busy panes cost about a fifth less renderer CPU
+  const BACKGROUND_MS = 100;
   function setSizer(fn) { sizeOf = fn; }
   function applySize(r) { const n = sizeOf(r.id); if (r.term && r.term.options.fontSize !== n) r.term.options.fontSize = n; }
   function setFontSize(n) {
@@ -44,7 +46,9 @@ const Terminals = (() => {
     pool().appendChild(wrap);
     const rec = { id, term: null, fit: null, wrap, overlay: null };
     wrap.addEventListener('contextmenu', e => onContext(rec, e));
+    for (const t of ['mousedown', 'mouseup']) wrap.addEventListener(t, e => onRightButton(rec, e), true);
     wrap.addEventListener('paste', e => onPasteEvent(rec, e), true);
+    wrap.addEventListener('focusin', () => flush(rec));
     terms.set(id, rec);
     return rec;
   }
@@ -76,11 +80,17 @@ const Terminals = (() => {
     let t = ''; try { t = await io.read(); } catch { /* treat as empty */ }
     if (t) term.paste(t); else desk.write(id, '\x16');
   }
-  // right click copies the selection, or pastes when there is none; Shift+right click is left for app.js's pane menu
+  // right click copies the selection, or pastes when there is none; Shift+right click is left for app.js's pane menu.
+  // A program with mouse reporting on (Claude Code) pastes on right click itself, so Desk pasting too doubled it.
+  const appMouse = term => term.modes.mouseTrackingMode !== 'none';
   function onContext(rec, e) {
     if (!rec.term || e.shiftKey) return;
     e.preventDefault();
-    if (!copy(rec.term)) paste(rec.id, rec.term);
+    if (!copy(rec.term) && !appMouse(rec.term)) paste(rec.id, rec.term);
+  }
+  // copying Desk's own selection (Shift+drag) must not also hand the click to the program, which would paste
+  function onRightButton(rec, e) {
+    if (e.button === 2 && !e.shiftKey && rec.term && rec.term.hasSelection()) e.stopPropagation();
   }
   // plain http(s) URLs in the output, joined across soft wrapped rows; Ctrl+click opens them in the browser
   function linkProvider(rec, term) {
@@ -112,7 +122,7 @@ const Terminals = (() => {
     clearTimeout(rec.drop); rec.drop = null;
     if (!rec.term) {
       // minimumContrastRatio lifts grey and dim output to 4.5:1 against the background, the WCAG bar for small text
-      const term = new Terminal({ theme, fontSize: sizeOf(id), fontFamily: FONT, lineHeight: 1.2, minimumContrastRatio: 4.5, cursorStyle: 'block', cursorBlink: true, allowProposedApi: true, scrollback: 2000, windowsPty: { backend: 'conpty' },
+      const term = new Terminal({ theme, fontSize: sizeOf(id), fontFamily: FONT, lineHeight: 1.2, minimumContrastRatio: 4.5, cursorStyle: 'block', cursorBlink: false, allowProposedApi: true, scrollback: 2000, windowsPty: { backend: 'conpty' },
         linkHandler: { activate: (e, uri) => { if (e.ctrlKey && /^https?:/i.test(uri)) io.open(uri); }, allowNonHttpProtocols: false } });
       const fit = new FitAddon.FitAddon();
       term.loadAddon(fit);
@@ -130,6 +140,7 @@ const Terminals = (() => {
       setTimeout(() => wiggle(id), 150);
     } else {
       // the xterm kept parsing while hidden, so its screen is current; a size change from fit resizes the pty and the TUI redraws on its own
+      flush(rec);
       applySize(rec);
       try { rec.fit.fit(); } catch { /* ignore */ }
     }
@@ -144,13 +155,25 @@ const Terminals = (() => {
     rec.drop = setTimeout(() => { rec.drop = null; if (!isPlaced(rec)) dropTerm(rec); }, HIDDEN_MS);
   }
   function dropTerm(rec) {
+    clearTimeout(rec.flushT); rec.flushT = null; rec.pend = '';
     if (!rec.term) return;
     rec.term.dispose(); rec.term = null; rec.fit = null;
     for (const x of rec.wrap.querySelectorAll(':scope > .xterm')) x.remove();
   }
   function hidden() { let n = 0; for (const r of terms.values()) if (!r.term) n++; return n; }
 
-  function write(id, d) { const rec = terms.get(id); if (rec && rec.term) rec.term.write(d); }
+  function write(id, d) {
+    const rec = terms.get(id);
+    if (!rec || !rec.term) return;
+    if (rec.wrap.contains(document.activeElement)) { if (rec.pend) flush(rec); rec.term.write(d); return; }
+    rec.pend = (rec.pend || '') + d;
+    if (!rec.flushT) rec.flushT = setTimeout(() => flush(rec), BACKGROUND_MS);
+  }
+  function flush(rec) {
+    clearTimeout(rec.flushT); rec.flushT = null;
+    if (rec.pend && rec.term) rec.term.write(rec.pend);
+    rec.pend = '';
+  }
 
   function fitAll() {
     for (const rec of terms.values()) if (rec.term && isPlaced(rec)) { try { rec.fit.fit(); } catch { /* ignore */ } }
@@ -188,6 +211,7 @@ const Terminals = (() => {
     const rec = terms.get(id);
     clearOverlay(id);
     if (!rec || !rec.term) return;
+    clearTimeout(rec.flushT); rec.flushT = null; rec.pend = '';
     rec.term.reset();
     if (!isPlaced(rec)) return;
     const r = await desk.attach(id, rec.term.cols, rec.term.rows);
@@ -199,7 +223,7 @@ const Terminals = (() => {
   function dispose(id) {
     const rec = terms.get(id);
     if (!rec) return;
-    clearTimeout(rec.drop);
+    clearTimeout(rec.drop); clearTimeout(rec.flushT);
     if (rec.term) rec.term.dispose();
     rec.wrap.remove();
     terms.delete(id);

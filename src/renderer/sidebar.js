@@ -57,8 +57,8 @@ const Sidebar = (() => {
   function signature(snap, ui) {
     return JSON.stringify([
       snap.projects.map(p => [p.key, p.badge, p.mem, p.foreign.map(f => [f.name, f.regStatus, f.mem, f.account])]),
-      snap.sessions.map(s => [s.id, s.name, s.status, s.state, s.glyph, s.label, s.mem, s.elsewhere, s.error, s.account, s.order]),
-      snap.laptop, snap.totals, ui.current, ui.expanded, ui.views[ui.current], ui.showMem, ui.picker,
+      snap.sessions.map(s => [s.id, s.name, s.status, s.state, s.glyph, s.label, s.now, s.mem, s.elsewhere, s.error, s.account, s.order]),
+      snap.laptop, snap.totals, snap.owners, ui.current, ui.expanded, ui.views[ui.current], ui.showMem, ui.picker,
     ]);
   }
 
@@ -175,13 +175,18 @@ const Sidebar = (() => {
       text(name, s.name);
       attr(name, 'title', s.name);
       setGlyph(st.firstChild, glyphOf(s));
-      const word = s.status === 'elsewhere' && s.elsewhere ? `elsewhere as ${s.elsewhere}` : (WORD[it.state] || it.state);
+      const word = s.status === 'elsewhere' && s.elsewhere ? `elsewhere as ${s.elsewhere}` : it.away ? `in window ${it.away}` : (WORD[it.state] || it.state);
+      r.classList.toggle('away', !!it.away);
       text(st.lastChild, word);
       attr(st, 'title', s.error || null);
-      attr(r, 'aria-label', `${s.name}, ${word}${s.label ? ', ' + s.label : ''}${it.placed ? ', shown' : ''}`);
+      attr(r, 'aria-label', `${s.name}, ${word}${(s.now || s.label) ? ', ' + (s.status === 'live' && s.now || s.label) : ''}${it.placed ? ', shown' : ''}`);
       const tone = `var(--st-${TONE[it.state] || it.state})`;
       if (st.style.getPropertyValue('--st') !== tone) st.style.setProperty('--st', tone);
-      text(label, s.label || ''); attr(label, 'title', s.label || null);
+      // the live line while there is one, the session's topic under it in the tooltip
+      const line = (s.status === 'live' && s.now) || s.label || '';
+      r.classList.toggle('shell', s.kind === 'shell');
+      text(label, line); attr(label, 'title', s.now && s.label && line !== s.label ? `${s.now}
+${s.label}` : line || null);
       mem.hidden = !it.showMem; text(mem, fmtMem(s.mem));
       const running = s.status === 'live' || s.status === 'starting' || s.status === 'queued';
       const parked = s.status === 'elsewhere' || s.status === 'offline';
@@ -234,7 +239,7 @@ const Sidebar = (() => {
         const expanded = ui.expanded[p.key] != null ? ui.expanded[p.key] : hasRows;
         out.push({ k: 'p:' + p.key, t: 'project', p, hasRows, expanded, current, count: sessions.length, showMem });
         if (!expanded) continue;
-        for (const s of sessions) out.push({ k: 's:' + s.id, t: 'session', s, state: stateOf(s), placed: placed.has(s.id), focused: focusedId === s.id, showMem });
+        for (const s of sessions) out.push({ k: 's:' + s.id, t: 'session', s, state: stateOf(s), placed: placed.has(s.id), focused: focusedId === s.id, away: last.H && last.H.awayN ? last.H.awayN(s) : 0, showMem });
         p.foreign.forEach((f, i) => out.push({ k: `f:${p.key}:${f.sid || f.cwd + f.name}:${i}`, t: 'foreign', f, showMem }));
       }
       const open = !!picker[machine];
@@ -249,7 +254,7 @@ const Sidebar = (() => {
   const SIG = {
     machine: it => JSON.stringify([it.laptop, it.total, it.showMem]),
     project: it => JSON.stringify([it.p.name, it.p.dir, it.p.badge, it.p.mem, it.hasRows, it.expanded, it.current, it.count, it.showMem]),
-    session: it => JSON.stringify([it.s.name, it.s.status, it.s.glyph, it.s.label, it.s.mem, it.s.elsewhere, it.s.error, it.s.account, it.state, it.placed, it.focused, it.showMem]),
+    session: it => JSON.stringify([it.s.name, it.s.status, it.s.glyph, it.s.label, it.s.now, it.s.mem, it.s.elsewhere, it.s.error, it.s.account, it.state, it.placed, it.away, it.focused, it.showMem]),
     foreign: it => JSON.stringify([it.f.name, it.f.sid, it.f.cwd, it.f.regStatus, it.f.mem, it.f.account, it.showMem]),
     all: it => JSON.stringify([it.open, it.n]),
     pick: it => JSON.stringify([it.p.name, it.p.dir, it.p.foreign.length, it.current]),

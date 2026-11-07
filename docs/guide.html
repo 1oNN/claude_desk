@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Desk Guide</title>
+<meta name="description" content="Accounts, sessions, panes and windows, menus, settings and keys in Claude Desk.">
+<link rel="icon" href="img/icon.svg">
+<link rel="stylesheet" href="site.css">
+<script>try { var t = localStorage.getItem('desk-docs-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
+</head>
+<body>
+<header class="bar">
+  <a class="home" href="index.html"><img src="img/icon.svg" alt=""><span>Claude Desk</span></a>
+  <nav><a href="index.html">Overview</a><a href="guide.html" aria-current="page">Guide</a><a href="help.html">Help</a></nav>
+  <div class="right">
+    <button id="theme" type="button" title="Switch light and dark">Theme</button>
+    <a class="gh" href="https://github.com/1oNN/claude_desk">GitHub</a>
+    <a class="dl" href="https://github.com/1oNN/claude_desk/releases">Download</a>
+  </div>
+</header>
+
+<div class="page">
+<aside class="toc">
+  <p>Guide</p>
+  <a href="#sessions">Sessions</a>
+  <a href="#accounts">Accounts</a>
+  <a href="#context">Context and tokens</a>
+  <a href="#panes">Panes</a>
+  <a href="#windows">Windows</a>
+  <a href="#menus">Menus</a>
+  <a href="#settings">Settings</a>
+  <a href="#keys">Keys</a>
+  <a href="#small">Small windows</a>
+</aside>
+<main>
+<h1>Guide</h1>
+<p class="lede">How Desk runs sessions, keeps accounts apart, and lays them out in panes and
+windows.</p>
+
+<h2 id="sessions">Sessions</h2>
+<p>Pick a project in the sidebar and press the session button, or <kbd>Ctrl+Shift+N</kbd>.
+<kbd>Ctrl+Shift+T</kbd> opens a plain shell in the same folder. Each session is a real
+Claude Code process; Desk only draws its terminal.</p>
+<ul>
+  <li>The glyph next to a session is its state: working, waiting for you, finished, failed or
+  idle. A session started outside Desk in the same folder shows greyed, so nothing gets
+  opened twice.</li>
+  <li><b>Stop</b> keeps the session. <b>Resume</b> brings the same conversation back by its
+  session id. <b>Forget</b> removes it from Desk; transcripts stay where Claude Code puts
+  them.</li>
+  <li><b>Say to Claude sessions</b> (Edit menu) sends one message to the idle Claude sessions
+  in the projects you tick. Busy sessions are skipped and named, because typed text would
+  answer whatever prompt they have open.</li>
+  <li>The bell, the window title and the taskbar flash count the sessions that need you.</li>
+</ul>
+
+<h2 id="accounts">Accounts</h2>
+<p>Add as many accounts as you like, in setup or in Settings, Accounts. Each one gets its own
+Claude Code config folder (<code>CLAUDE_CONFIG_DIR</code>), so logins, history and settings
+stay apart. A new account's folder lives in Desk's data folder, or you can point it at a
+config folder you already have.</p>
+<p><b>Sign in</b> runs Claude Code's own login in a pane, with that account's folder. Desk
+never sees, reads or stores your token. When the login is done the account turns green.</p>
+<p>A new account shares your skills, agents, commands, plugins and <code>CLAUDE.md</code> with
+the main account through directory junctions, so you keep one copy. Junctions need no admin
+rights. Every session wears its account's colour in the sidebar and tabs.</p>
+<p>Desk shows each account's five-hour and seven-day limits, or its cost this month for
+API-key accounts. It reads them from a status line it gives its own sessions, so this costs no
+tokens and makes no network calls. If an account already has its own <code>statusLine</code>,
+Desk leaves it alone and shows no usage for that account.</p>
+
+<h2 id="context">Context and tokens</h2>
+<p>Desk can add a line to each session's system prompt. It is off by default.</p>
+<table>
+  <thead><tr><th>Setting</th><th>What Desk adds</th><th>About</th></tr></thead>
+  <tbody>
+    <tr><td>Nothing</td><td>nothing</td><td class="num">0 tokens</td></tr>
+    <tr><td>Name</td><td>"You are &lt;name&gt; in Claude Desk, working in &lt;project&gt;."</td><td class="num">12 tokens</td></tr>
+    <tr><td>Name and team</td><td>the name line plus the other sessions in the project</td><td class="num">26 tokens with 2 peers</td></tr>
+  </tbody>
+</table>
+<p>Token counts are characters divided by four, measured from the arguments Desk builds. When
+a session is resumed after Desk was closed in the middle of a turn, an optional one-line note
+(about 24 tokens) tells Claude to carry on. That is off by default too.</p>
+
+<h2 id="panes">Panes</h2>
+<p>The tab strip lists every session of the current project. Click one to show it in the
+focused pane, or drag it onto a pane. <kbd>Ctrl+Shift+1</kbd> to <kbd>Ctrl+Shift+8</kbd> set
+the number of panes; <kbd>Ctrl+1</kbd> to <kbd>Ctrl+8</kbd> focus one. Each pane header has
+buttons to add a pane, maximise this one, move it to a new window and close it.</p>
+<p>The sidebar header has a hide button, and <kbd>Ctrl+B</kbd> does the same. Clicking the
+active icon in the activity bar also hides it.</p>
+
+<h2 id="windows">Windows</h2>
+<p>File, <b>New window</b> opens another window over the same sessions. Each window keeps its
+own project, panes and layout, and Desk reopens every window at its saved size on the next
+start.</p>
+<p>A session shows in one window at a time. <b>Move pane to a new window</b>
+(<kbd>Ctrl+Shift+M</kbd>) takes the focused pane out: the process keeps running and its output
+carries on in the new window. The other window marks the session "in window 2"; click it to
+go there, or drag it back onto a pane. The Window menu lists every open window and can move a
+pane to any of them.</p>
+<p>Closing a window that is not the last one only closes that window, and its sessions keep
+running. Closing the last window stops the sessions it hosts; the saved ones come back one at
+a time on the next start.</p>
+
+<h2 id="menus">Menus</h2>
+<figure><img src="img/menu-file.png" width="1600" height="950" alt="The File menu open in the title bar"></figure>
+<table>
+  <tbody>
+    <tr><td>File</td><td>New Claude session, new shell, new window, new project, open folder, settings, close window, exit</td></tr>
+    <tr><td>Edit</td><td>Copy, paste, select all, say to Claude sessions</td></tr>
+    <tr><td>View</td><td>Command palette, go to, Desk home, projects, needs you, sidebar, left panel, status bar, panes 1-8, zoom, theme, full screen</td></tr>
+    <tr><td>Window</td><td>New window, move pane to a new window, move pane to another window, close window, the window list</td></tr>
+    <tr><td>Help</td><td>Welcome, keyboard shortcuts, these docs, release notes, report an issue, open the log, open the state folder, about</td></tr>
+  </tbody>
+</table>
+<p><kbd>Alt</kbd> opens the menus when no terminal has focus. Inside a terminal Alt stays with
+Claude Code. New project creates the folder under your projects folder and refuses names
+Windows reserves.</p>
+
+<h2 id="settings">Settings</h2>
+<p><kbd>Ctrl+,</kbd> opens Settings as a full page. Search finds a setting by its name, its
+description or a related word ("font", "ram", "notify"). A changed setting gets a bar on the
+left and a reset button.</p>
+<figure><img src="img/settings-1600.png" width="1600" height="950" alt="The Settings page with its section list and search box"></figure>
+<table>
+  <tbody>
+    <tr><td>Accounts</td><td>Add, sign in, colour, config folder, remove</td></tr>
+    <tr><td>Appearance</td><td>Theme, accent, window zoom, status bar, sidebar width</td></tr>
+    <tr><td>Terminal</td><td>Text size, font, reset every zoom</td></tr>
+    <tr><td>Sessions</td><td>Which start with Desk, carry on after a restart, memory per session, GPU or software painting</td></tr>
+    <tr><td>Context</td><td>Session context, usage limits</td></tr>
+    <tr><td>Attention</td><td>Taskbar flash, desktop notifications</td></tr>
+    <tr><td>Updates</td><td>Automatic updates, check now</td></tr>
+    <tr><td>Paths</td><td>Projects folder, Claude Code, shell, state folder</td></tr>
+    <tr><td>Keyboard</td><td>Every key, as below</td></tr>
+  </tbody>
+</table>
+
+<h2 id="keys">Keys</h2>
+<p><kbd>Ctrl+/</kbd> or <kbd>F1</kbd> shows this list in the app.</p>
+<table>
+  <tbody>
+    <tr><td><kbd>Ctrl+K</kbd></td><td>Command palette</td></tr>
+    <tr><td><kbd>Ctrl+P</kbd></td><td>Go to a project or session</td></tr>
+    <tr><td><kbd>Ctrl+Shift+N</kbd></td><td>New Claude session</td></tr>
+    <tr><td><kbd>Ctrl+Shift+T</kbd></td><td>New shell</td></tr>
+    <tr><td><kbd>Ctrl+Shift+M</kbd></td><td>Move the focused pane to a new window</td></tr>
+    <tr><td><kbd>Ctrl+1</kbd> to <kbd>8</kbd></td><td>Focus a pane</td></tr>
+    <tr><td><kbd>Ctrl+Shift+1</kbd> to <kbd>8</kbd></td><td>One to eight panes</td></tr>
+    <tr><td><kbd>Ctrl+Tab</kbd>, <kbd>Ctrl+Shift+Tab</kbd></td><td>Next or previous session in the pane</td></tr>
+    <tr><td><kbd>Ctrl+B</kbd>, <kbd>Ctrl+Shift+B</kbd></td><td>Sidebar, whole left panel</td></tr>
+    <tr><td><kbd>Ctrl+,</kbd></td><td>Settings</td></tr>
+    <tr><td><kbd>Ctrl+=</kbd> <kbd>Ctrl+-</kbd> <kbd>Ctrl+0</kbd></td><td>Zoom the focused terminal</td></tr>
+    <tr><td><kbd>Ctrl+Shift+=</kbd> <kbd>Ctrl+Shift+-</kbd> <kbd>Ctrl+Shift+0</kbd></td><td>Zoom the whole window</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+wheel</td><td>Zoom whatever is under the pointer</td></tr>
+    <tr><td><kbd>Ctrl+C</kbd></td><td>Copy when text is selected, otherwise sent to the terminal</td></tr>
+    <tr><td><kbd>Ctrl+V</kbd>, right click</td><td>Paste. Right click copies instead when text is selected</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+click</td><td>Open a link</td></tr>
+    <tr><td><kbd>Alt</kbd></td><td>Menus, when no terminal has focus</td></tr>
+    <tr><td><kbd>F11</kbd></td><td>Full screen</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>Close a menu or the palette, clear the toasts</td></tr>
+  </tbody>
+</table>
+<p>In the sidebar, the arrows move, <kbd>Enter</kbd> opens, <kbd>Right</kbd> reaches a row's
+buttons, <kbd>Left</kbd> goes back and <kbd>Delete</kbd> stops a session. Every other key goes
+to the terminal.</p>
+
+<h2 id="small">Small windows</h2>
+<p>A window can be as small as 480 by 360, which suits a pane moved out on its own. Under 900
+wide the sidebar opens over the panes and closes when you pick something. Under 640 the menus
+fold into one button. Welcome and Settings fold to one column.</p>
+<div class="pair narrow">
+  <figure><img src="img/panes-375.png" width="480" height="760" alt="Panes in a narrow window"><figcaption>Panes</figcaption></figure>
+  <figure><img src="img/welcome-375.png" width="480" height="760" alt="The Welcome page in a narrow window"><figcaption>Welcome</figcaption></figure>
+  <figure><img src="img/settings-375.png" width="480" height="760" alt="Settings in a narrow window"><figcaption>Settings</figcaption></figure>
+</div>
+
+<div class="next"><a href="index.html">Back: overview</a><a class="r" href="help.html">Next: help</a></div>
+</main>
+</div>
+<footer>MIT licence. <a href="https://github.com/1oNN/claude_desk">github.com/1oNN/claude_desk</a></footer>
+<script>
+document.getElementById('theme').onclick = function () {
+  var d = document.documentElement, dark = d.dataset.theme ? d.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  d.dataset.theme = dark ? 'light' : 'dark';
+  try { localStorage.setItem('desk-docs-theme', d.dataset.theme); } catch (e) {}
+};
+</script>
+</body>
+</html>

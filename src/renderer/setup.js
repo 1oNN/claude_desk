@@ -103,17 +103,18 @@ function renderLook() {
   for (const sel of document.querySelectorAll('select.tfam')) fillFontSelect(sel);
   for (const seg of document.querySelectorAll('.seg.theme')) for (const b of seg.children) b.classList.toggle('on', b.dataset.theme === (ui.theme || ''));
   for (const seg of document.querySelectorAll('.seg.tsize')) for (const b of seg.children) b.classList.toggle('on', Number(b.dataset.font) === (ui.termFont || 14));
-  const pv = document.getElementById('wl-preview');
-  if (pv) pv.style.fontFamily = `"${ui.termFamily || 'Cascadia Mono'}", Consolas, monospace`;
-  if (pv) pv.style.fontSize = (ui.termFont || 14) + 'px';
+  if (typeof Welcome !== 'undefined') Welcome.preview();
+  renderSetup();
 }
 
 // ---------- context ----------
-const CONTEXT_COPY = {
-  off: ['Nothing', 'Desk adds nothing to the system prompt. 0 tokens.'],
-  name: ['Name', 'One line: "You are <session> in Claude Desk, working in <project>." About 15 tokens.'],
-  team: ['Name and team', 'The line above plus the other Desk sessions in the project, so they can refer to each other. About 15 to 40 tokens.'],
+// token counts are the README's: characters over four, measured from the arguments Desk builds
+const CONTEXT_ROWS = {
+  off: ['Nothing', 'Desk adds nothing to the system prompt.', '0 tokens'],
+  name: ['Name', 'One line: "You are <session> in Claude Desk, working in <project>."', '12 tokens'],
+  team: ['Name and team', 'The name line plus the other Desk sessions in the project, so they can refer to each other.', '26 tokens with 2 peers'],
 };
+const CONTEXT_COPY = Object.fromEntries(Object.entries(CONTEXT_ROWS).map(([k, [t, d, c]]) => [k, [t, `${d} ${c[0].toUpperCase() + c.slice(1)}.`]]));
 async function setSetting(patch, msg) {
   try { snap = Object.assign(snap || {}, { setup: (await desk.setSettings(patch)).setup }); } catch (e) { toast(e.message, 'error'); return; }
   renderContext(); renderSetup(); Welcome.render();
@@ -122,14 +123,14 @@ async function setSetting(patch, msg) {
 function renderContext() {
   const su = snap && snap.setup; if (!su) return;
   for (const seg of document.querySelectorAll('.seg.context')) for (const b of seg.children) b.classList.toggle('on', b.dataset.context === su.context);
+  for (const b of document.querySelectorAll('.wl-opt[data-context]')) { const on = b.dataset.context === (su.context || 'off'); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }
   for (const p of document.querySelectorAll('.context-note')) Dom.text(p, su.alliance ? 'The alliance prompt script sets the prompt, so this does not apply.' : CONTEXT_COPY[su.context || 'off'][1]);
   for (const c of document.querySelectorAll('input.carry')) c.checked = !!su.carryOn;
   for (const c of document.querySelectorAll('input.usage')) c.checked = su.usage !== 'off';
   for (const c of document.querySelectorAll('input.updates')) c.checked = su.updates !== 'off';
-  const v = document.getElementById('upd-version'); if (v) Dom.text(v, `Claude Desk ${su.version || ''}`);
 }
 document.addEventListener('click', e => {
-  const b = e.target.closest('.seg.context button'); if (b) { setSetting({ context: b.dataset.context }, 'Applies to sessions started from now on'); return; }
+  const b = e.target.closest('.seg.context button, .wl-opt[data-context]'); if (b) { setSetting({ context: b.dataset.context }, 'Applies to sessions started from now on'); return; }
   const t = e.target.closest('.seg.theme button'); if (t) { setTheme(t.dataset.theme); renderLook(); return; }
   const f = e.target.closest('.seg.tsize button'); if (f) { setTermFont(Number(f.dataset.font)); renderLook(); }
 });
@@ -139,14 +140,18 @@ document.addEventListener('change', e => {
   else if (e.target.matches('select.tfam')) setTermFamily(e.target.value);
   else if (e.target.matches('input.updates')) setSetting({ updates: e.target.checked ? 'on' : 'off' }, 'Applies at the next start');
 });
-document.getElementById('upd-check').onclick = async () => {
-  try { const r = await desk.checkUpdate(); toast(r.note || 'Desk is up to date'); } catch (e) { toast(e.message, 'error'); }
-};
 
 // ---------- the first-run setup ----------
+// a full-window page: the rail lists the steps and, once seen, what each one was set to
 const Welcome = (() => {
-  const STEPS = ['Check', 'Accounts', 'Look', 'Context'];
-  let step = 0, away = false, open = false, begun = false;
+  const STEPS = [
+    ['Check', 'What Desk needs on this PC', 'Welcome to Claude Desk'],
+    ['Accounts', 'Which Claude sign-ins to use', 'Accounts'],
+    ['Look', 'Theme, accent and terminal font', 'How Desk looks'],
+    ['Context', 'What sessions are told about Desk', 'What sessions are told'],
+  ];
+  let step = 0, seen = 0, away = false, open = false, begun = false;
+  let pv = null;
   const el = () => document.getElementById('welcome');
   function check() {
     // adding an account writes the store and ends first run; a setup already under way still runs to the end
@@ -159,58 +164,129 @@ const Welcome = (() => {
     open = on;
     el().hidden = !on;
     if (on) { render(true); requestAnimationFrame(() => { const n = document.getElementById('wl-next'); if (n) n.focus(); }); }
+    else dropPreview();
   }
+  // the answer each step gave, for the rail; null while the step is not seen yet
+  function answer(i) {
+    const su = snap.setup, al = snap.accountList || [];
+    if (i === 0) {
+      if (!su.claudeExe) return ['Claude Code not found', true];
+      if (!su.projectsRoot) return ['No projects folder yet', true];
+      return ['Claude Code found', false];
+    }
+    if (i === 1) { const n = al.filter(a => a.signedIn).length; return [`${al.length} account${al.length === 1 ? '' : 's'}, ${n} signed in`, al.length > 0 && !n]; }
+    if (i === 2) return [`${{ light: 'Light', dark: 'Dark' }[ui.theme] || 'System'}, ${ui.termFamily || 'Cascadia Mono'} ${ui.termFont || 14}`, false];
+    return [`${CONTEXT_ROWS[su.context || 'off'][0]}, ${CONTEXT_ROWS[su.context || 'off'][2]}`, false];
+  }
+  function rail() {
+    const box = document.getElementById('wl-steps');
+    box.textContent = '';
+    STEPS.forEach(([name, q], i) => {
+      const done = i !== step && i <= seen;
+      const b = Dom.h('button', 'wl-step' + (i === step ? ' on' : done ? ' done' : ''));
+      const n = Dom.h('span', 'wl-n'); if (done) n.appendChild(svgUse('i-check')); else n.textContent = String(i + 1);
+      const [a, bad] = i <= seen ? answer(i) : [q, false];
+      const t = Dom.h('span', 'wl-t'); t.append(Dom.h('b', null, name), Dom.h('span', 'wl-d' + (i <= seen ? ' ans' : '') + (bad ? ' warn' : ''), a));
+      b.append(n, t);
+      b.onclick = () => go(i);
+      if (i === step) b.setAttribute('aria-current', 'step');
+      const li = Dom.h('li'); li.appendChild(b); box.appendChild(li);
+    });
+  }
+  const btn = (t, fn, cls) => { const b = Dom.h('button', cls || null, t); b.onclick = fn; return b; };
   function stepCheck(body) {
     const su = snap.setup;
-    body.appendChild(Dom.h('p', 'lede', 'Claude Desk runs Claude Code sessions side by side. It needs Claude Code, a shell, and a folder that holds your projects.'));
-    const dl = Dom.h('div', 'wl-rows');
-    const line = (k, v, ok, btn) => {
-      const r = Dom.h('div', 'wl-row');
-      r.append(Dom.h('span', 'k', k), Dom.h('span', 'v ' + (ok ? 'ok' : 'bad'), v));
-      if (btn) r.appendChild(btn);
+    body.appendChild(Dom.h('p', 'lede', 'Desk runs Claude Code sessions and shells side by side, across your Claude accounts. It needs Claude Code, a shell, and the folder that holds your projects.'));
+    const dl = Dom.h('div', 'wl-checks');
+    const line = (k, v, ok, b) => {
+      const r = Dom.h('div', 'wl-chk ' + (ok ? 'ok' : 'bad'));
+      r.append(svgUse(ok ? 'i-check' : 'i-attention'), Dom.h('span', 'k', k), Dom.h('span', 'v', v), b);
       dl.appendChild(r);
     };
-    const btn = (t, fn) => { const b = Dom.h('button', null, t); b.onclick = fn; return b; };
-    line('Claude Code', su.claudeExe || 'not found', !!su.claudeExe, su.claudeExe ? btn('Change', () => changePath('file', 'claudeExe', null, 'Claude Code path set')) : btn('How to install', () => desk.openUrl('https://github.com/anthropics/claude-code')));
-    line('Shell', su.pwsh || 'no PowerShell found', !!su.pwsh, btn('Change', () => changePath('file', 'pwsh', null, 'Shell path set')));
-    line('Projects', su.projectsRoot || 'not set yet', !!su.projectsRoot, btn(su.projectsRoot ? 'Change' : 'Pick a folder', () => changePath('folder', 'projectsRoot', su.projectsRoot, 'Projects folder set')));
+    line('Claude Code', su.claudeExe || 'Not found on this PC', !!su.claudeExe, su.claudeExe ? btn('Change', () => changePath('file', 'claudeExe', null, 'Claude Code path set')) : btn('How to install', () => desk.openUrl('https://github.com/anthropics/claude-code')));
+    line('Shell', su.pwsh || 'No PowerShell found', !!su.pwsh, btn('Change', () => changePath('file', 'pwsh', null, 'Shell path set')));
+    line('Projects', su.projectsRoot || 'Not set yet', !!su.projectsRoot, btn(su.projectsRoot ? 'Change' : 'Pick a folder', () => changePath('folder', 'projectsRoot', su.projectsRoot, 'Projects folder set'), su.projectsRoot ? null : 'primary'));
     body.appendChild(dl);
     if (!su.claudeExe) body.appendChild(Dom.h('p', 'hint', 'Install Claude Code, then press Change and point Desk at claude.exe, or restart Desk.'));
+    else if (!su.projectsRoot) body.appendChild(Dom.h('p', 'hint', 'Each folder inside the projects folder shows up as a project. You can also open any folder later.'));
   }
   function stepAccounts(body) {
     body.appendChild(Dom.h('p', 'lede', 'Each account is its own Claude Code sign-in with its own folder. Name them, give each a colour, and sign in. Desk never reads or stores a token: the sign-in runs in Claude Code itself.'));
+    // how each account's sessions will look in the tab strip
+    const strip = Dom.h('div', 'wl-strip'); strip.setAttribute('aria-hidden', 'true');
+    for (const a of snap.accountList || []) {
+      const t = Dom.h('div', 'tab placed');
+      const d = Dom.h('span', 'dot'); d.style.background = a.colour;
+      t.append(d, Dom.h('span', 'tname', a.name));
+      strip.appendChild(t);
+    }
+    if (strip.children.length) body.appendChild(strip);
     const box = Dom.h('div', 'acc-list'); body.appendChild(box);
     AccountsUI.render(box);
-    const b = Dom.h('button', null, 'Add account'); b.onclick = () => AccountsUI.add();
-    const btns = Dom.h('div', 'btns'); btns.appendChild(b); body.appendChild(btns);
+    const btns = Dom.h('div', 'btns'); btns.appendChild(btn('Add account', () => AccountsUI.add())); body.appendChild(btns);
     body.appendChild(Dom.h('p', 'hint', 'A new account shares the main account\'s skills, agents, commands, plugins and CLAUDE.md. Sign in opens a pane in your first project.'));
   }
   function stepLook(body) {
-    body.appendChild(Dom.h('p', 'lede', 'Pick how Desk looks. All of this is in Settings later.'));
+    body.appendChild(Dom.h('p', 'lede', 'Pick how Desk looks. The terminal below is a real one, drawn the way your sessions will be. All of this is in Settings later.'));
     const grid = Dom.h('div', 'wl-look');
-    const f = (label, ctl) => { const r = Dom.h('div', 'wl-row'); r.append(Dom.h('span', 'k', label), ctl); grid.appendChild(r); };
+    const f = (label, ctl) => grid.append(Dom.h('span', 'k', label), ctl);
     const seg = (cls, items, attr) => { const s = Dom.h('div', 'seg ' + cls); for (const [v, t] of items) { const b = Dom.h('button', null, t); b.dataset[attr] = v; s.appendChild(b); } return s; };
     f('Theme', seg('theme', [['', 'System'], ['light', 'Light'], ['dark', 'Dark']], 'theme'));
-    const sw = Dom.h('div', 'swatches'); f('Accent', sw);
+    f('Accent', Dom.h('div', 'swatches'));
     f('Text size', seg('tsize', [12, 13, 14, 16, 18].map(n => [n, String(n)]), 'font'));
     const sel = Dom.h('select', 'tfam'); sel.setAttribute('aria-label', 'Terminal font'); f('Terminal font', sel);
     body.appendChild(grid);
-    const pv = Dom.h('pre', 'wl-preview'); pv.id = 'wl-preview';
-    pv.append(Dom.h('span', 'c', '> '), document.createTextNode('fix the failing test in parser.js\n'), Dom.h('span', 'g', '  Read  src/parser.js\n'), Dom.h('span', 'a', '  Edit  '), document.createTextNode('src/parser.js  +3 -1'));
-    body.appendChild(pv);
+    const box = Dom.h('div', 'wl-term'); box.setAttribute('aria-label', 'Terminal preview'); body.appendChild(box);
+    pv = { box, term: null, fit: null };
     renderLook();
   }
+  // a scripted Claude Code exchange; the prompt marks use the accent like the cursor does
+  function script() {
+    const m = /^#([0-9a-f]{6})$/i.exec(getComputedStyle(document.documentElement).getPropertyValue('--accent').trim());
+    const n = m ? parseInt(m[1], 16) : 0xC4182F;
+    const A = `\x1b[38;2;${n >> 16};${n >> 8 & 255};${n & 255}m`, Z = '\x1b[0m', D = '\x1b[2m', B = '\x1b[1m', G = '\x1b[32m', Rd = '\x1b[31m';
+    return [
+      `${A}>${Z} fix the failing test in parser.js`, '',
+      `${A}\u25cf${Z} ${B}Read${Z}(src/parser.js)`, `  ${D}\u23bf  Read 182 lines${Z}`, '',
+      `${A}\u25cf${Z} ${B}Update${Z}(src/parser.js)`, `  ${D}\u23bf  Updated src/parser.js with 3 additions and 1 removal${Z}`,
+      `       ${Rd}41 -    if (tok === ',') break;${Z}`, `       ${G}41 +    if (tok === ',') {${Z}`, `       ${G}42 +      skipSpace();${Z}`, `       ${G}43 +      continue;${Z}`, '',
+      `${A}\u25cf${Z} The test passes now: a comma inside a list was ending the parse early.`, '',
+      `${A}>${Z} `,
+    ];
+  }
+  const ROWS = 15;
+  function preview() {
+    if (!pv || !open || !pv.box.isConnected) return;
+    const size = ui.termFont || 14;
+    const opts = { theme: Object.assign({}, termTheme || {}), fontSize: size, fontFamily: (ui.termFamily ? `"${ui.termFamily}", ` : '') + '"Cascadia Mono", Consolas, "Courier New", monospace' };
+    if (!pv.term) {
+      pv.term = new Terminal(Object.assign(opts, { lineHeight: 1.2, minimumContrastRatio: 4.5, cursorStyle: 'block', cursorBlink: false, disableStdin: true, scrollback: 0 }));
+      pv.fit = new FitAddon.FitAddon(); pv.term.loadAddon(pv.fit);
+      pv.term.open(pv.box);
+    } else Object.assign(pv.term.options, opts);
+    // fit only sets the width; the height follows the script's rows
+    const d = pv.fit.proposeDimensions();
+    if (d && d.cols) pv.term.resize(d.cols, ROWS);
+    pv.term.reset();
+    // no auto-wrap: a narrow window clips the long lines instead of pushing the prompt off the top
+    pv.term.write('\x1b[?7l' + script().join('\r\n'));
+  }
+  function dropPreview() { if (pv && pv.term) pv.term.dispose(); pv = null; }
   function stepContext(body) {
     const su = snap.setup;
     body.appendChild(Dom.h('p', 'lede', 'What Desk adds to each session\'s system prompt. Every token here is sent with every message, so the default is nothing.'));
-    const s = Dom.h('div', 'seg context'); s.setAttribute('role', 'group'); s.setAttribute('aria-label', 'Session context');
-    for (const k of ['off', 'name', 'team']) { const b = Dom.h('button', null, CONTEXT_COPY[k][0]); b.dataset.context = k; s.appendChild(b); }
-    body.appendChild(s);
-    body.appendChild(Dom.h('p', 'context-note'));
+    const opts = Dom.h('div', 'wl-opts'); opts.setAttribute('role', 'group'); opts.setAttribute('aria-label', 'Session context');
+    for (const [k, [t, d, c]] of Object.entries(CONTEXT_ROWS)) {
+      const b = Dom.h('button', 'wl-opt'); b.dataset.context = k;
+      const tx = Dom.h('span', 'tx'); tx.append(Dom.h('b', null, t), Dom.h('span', 'd', d));
+      b.append(Dom.h('span', 'rd'), tx, Dom.h('span', 'cost', c));
+      opts.appendChild(b);
+    }
+    body.appendChild(opts);
+    if (su.alliance) body.appendChild(Dom.h('p', 'hint', 'An alliance root is set, so its prompt script is used and this choice does not apply.'));
     const chk = (cls, text) => { const l = Dom.h('label', 'check'); const i = Dom.h('input'); i.type = 'checkbox'; i.className = cls; l.append(i, document.createTextNode(' ' + text)); body.appendChild(l); };
     chk('usage', 'Show each account\'s usage limits. Desk gives its sessions a status line that records them; it costs no tokens.');
-    chk('carry', 'After a crash or restart, tell a resumed session to carry on (one short line).');
-    if (su.alliance) body.appendChild(Dom.h('p', 'hint', 'An alliance root is set, so its prompt script is used.'));
+    chk('carry', 'After a crash or restart, tell a resumed session to carry on (one short line, about 24 tokens).');
     renderContext();
   }
   let lastSig = '';
@@ -218,20 +294,22 @@ const Welcome = (() => {
     if (!open) return;
     const body = document.getElementById('wl-body');
     const su = snap.setup;
-    const sig = JSON.stringify([step, su.claudeExe, su.pwsh, su.projectsRoot, step === 1 ? snap.accountList : 0]);
+    const sig = JSON.stringify([step, seen, su.claudeExe, su.pwsh, su.projectsRoot, su.context, ui.theme, ui.termFont, ui.termFamily, snap.accountList]);
     if (!force && sig === lastSig) return;
-    if (!force && body.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;
+    rail();
+    if (!force && (step === 2 || body.contains(document.activeElement) && document.activeElement.tagName === 'INPUT')) { lastSig = sig; return; }
     lastSig = sig;
-    const steps = document.getElementById('wl-steps');
-    steps.textContent = '';
-    STEPS.forEach((t, i) => { const b = Dom.h('button', 'wl-step' + (i === step ? ' on' : i < step ? ' done' : ''), `${i + 1}  ${t}`); b.onclick = () => go(i); if (i === step) b.setAttribute('aria-current', 'step'); steps.appendChild(b); });
-    Dom.text(document.getElementById('wl-title'), ['Welcome to Claude Desk', 'Accounts', 'Look', 'Context'][step]);
+    Dom.text(document.getElementById('wl-app'), su.appName || 'Claude Desk');
+    Dom.text(document.getElementById('wl-title'), STEPS[step][2]);
+    dropPreview();
     body.textContent = '';
     [stepCheck, stepAccounts, stepLook, stepContext][step](body);
     document.getElementById('wl-back').hidden = step === 0;
     Dom.text(document.getElementById('wl-next'), step === STEPS.length - 1 ? 'Start using Desk' : 'Next');
+    document.querySelector('#welcome .wl-scroll').scrollTop = 0;
   }
-  function go(i) { step = Math.max(0, Math.min(STEPS.length - 1, i)); render(true); }
+  function go(i) { step = Math.max(0, Math.min(STEPS.length - 1, i)); seen = Math.max(seen, step); render(true); }
+  const next = () => step === STEPS.length - 1 ? finish() : go(step + 1);
   async function finish() {
     try { snap.accountList = await desk.setupDone(); } catch (e) { toast(e.message, 'error'); return; }
     snap.setup.firstRun = false; away = false; begun = false;
@@ -239,13 +317,19 @@ const Welcome = (() => {
     renderAll();
     if (!snap.sessions.length && snap.setup.claudeExe) toast('Pick a project in the sidebar and press + to start a session');
   }
-  document.getElementById('wl-next').onclick = () => step === STEPS.length - 1 ? finish() : go(step + 1);
+  document.getElementById('wl-next').onclick = next;
   document.getElementById('wl-back').onclick = () => go(step - 1);
   document.getElementById('wl-skip').onclick = finish;
-  el().addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); } });
+  // Enter moves on unless a control has focus; Esc skips, or just leaves a text box first
+  window.addEventListener('keydown', e => {
+    if (!open || e.isComposing) return;
+    const t = e.target, typing = t && t.matches && t.matches('input:not([type=checkbox]):not([type=color]), select, textarea');
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (typing) t.blur(); else finish(); }
+    else if (e.key === 'Enter' && !e.ctrlKey && !e.altKey && !(t && t.closest && t.closest('button, a, input, select, textarea'))) { e.preventDefault(); e.stopPropagation(); next(); }
+  }, true);
   return {
-    check, render: () => render(false),
-    // stepping out to sign in; the home card brings it back
+    check, render: () => render(false), preview: () => { preview(); if (open) rail(); },
+    // stepping out to sign in; the home page brings it back
     away() { if (open) { away = true; show(false); } },
     resume() { away = false; step = Math.min(step, 1); check(); },
     isAway: () => away,

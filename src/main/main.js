@@ -10,6 +10,8 @@ const accounts = require('./accounts');
 const usage = require('./usage');
 const { PcSessions } = require('./sessions');
 const { Laptop } = require('./laptop');
+const { OneLiner } = require('./oneliner');
+const alliance = require('./alliance');
 
 // keep painting while covered, so screenshots and hidden-window repaints stay current
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
@@ -33,26 +35,41 @@ try { usage.install(); } catch (e) { log('status line install failed', e.message
 const pc = new PcSessions(log);
 const laptop = new Laptop(log);
 const runtime = new Map(); // session id -> live facts not worth saving
-let win = null;
+const wins = new Map(); // wid -> BrowserWindow
+const TITLE_H = 34; // the title bar overlay height in DIPs; the renderer reads it back as env(titlebar-area-height)
+const owner = new Map(); // session id -> wid of the one window showing it
+let lastFocused = null;
+const oneLiner = C.ALLIANCE && C.SETTINGS.oneLiner !== 'off' ? new OneLiner({
+  sessions: () => state.sessions.filter(s => s.machine === 'pc' && s.kind !== 'shell' && pc.isLive(s.id))
+    .map(s => ({ id: s.id, account: s.account, transcript: alliance.transcriptPath(s.account, s.cwd, s.sid) })),
+  envFor: a => pc.baseEnv(a), log,
+}) : null;
 let booted = false;
 let quitting = false;
 
 const key = (machine, dir) => `${machine}:${dir}`;
 const rt = id => { if (!runtime.has(id)) runtime.set(id, { status: 'stopped', state: 'idle', glyph: 'idle', label: '', mem: 0 }); return runtime.get(id); };
 const byId = id => state.sessions.find(s => s.id === id);
-const send = (ch, ...a) => { if (win && !win.isDestroyed()) win.webContents.send(ch, ...a); };
+const live = w => w && !w.isDestroyed();
+const sendTo = (wid, ch, ...a) => { const w = wins.get(wid); if (live(w)) w.webContents.send(ch, ...a); };
+const send = (ch, ...a) => { for (const wid of wins.keys()) sendTo(wid, ch, ...a); };
+// the window a dialog, a flash or a debug op belongs to when nothing names one
+const mainWin = () => wins.get(lastFocused) || wins.values().next().value || null;
+const winOf = e => { for (const [wid, w] of wins) if (live(w) && e.sender === w.webContents) return wid; return null; };
 // a big print reaches main as thousands of small chunks; a session's first chunk after a quiet spell goes at once (key echo), the rest are joined for DATA_MS
 const DATA_MS = 8;
 const outBuf = new Map(); // session id -> { parts, timer, last }
 function flushData(id) {
   const o = outBuf.get(id); if (!o) return;
   clearTimeout(o.timer); o.timer = null; o.last = Date.now();
-  if (o.parts.length) send('desk:data', id, o.parts.length === 1 ? o.parts[0] : o.parts.join(''));
+  if (o.parts.length) sendTo(owner.get(id), 'desk:data', id, o.parts.length === 1 ? o.parts[0] : o.parts.join(''));
   o.parts = [];
 }
+// output goes only to the window showing the session; the ring keeps it for whichever attaches next
 function sendData(id, d) {
+  if (!owner.has(id)) return;
   let o = outBuf.get(id); if (!o) outBuf.set(id, o = { parts: [], timer: null, last: 0 });
-  if (!o.timer && Date.now() - o.last >= DATA_MS) { o.last = Date.now(); send('desk:data', id, d); return; }
+  if (!o.timer && Date.now() - o.last >= DATA_MS) { o.last = Date.now(); sendTo(owner.get(id), 'desk:data', id, d); return; }
   o.parts.push(d);
   if (!o.timer) o.timer = setTimeout(() => flushData(id), Math.max(0, DATA_MS - (Date.now() - o.last)));
 }
@@ -134,6 +151,7 @@ function pollPc() {
       r.state = deskState(tag.state, r.regStatus);
       r.glyph = glyphFor(tag.state, r.regStatus);
       r.label = tag.summary || tag.title || '';
+      r.now = oneLiner ? oneLiner.line(s.id) : null;
       r.status = 'live';
       r.elsewhere = null;
     } else {
@@ -297,9 +315,11 @@ function snapshot() {
   const totals = { pc: 0, laptop: 0 };
   for (const s of sessions) totals[s.machine] += s.mem || 0;
   return {
-    projects, sessions, ui: state.ui, colours: C.COLOURS, roles: C.ROLES, accountList: accountView(),
+    projects, sessions, colours: C.COLOURS, roles: C.ROLES, accountList: accountView(),
+    windows: windowList(), owners: Object.fromEntries(owner), notifier: lastFocused,
     laptop: { status: laptop.status, error: laptop.error, host: laptop.cfg ? laptop.cfg.host : null, mem: lastLaptopPoll ? lastLaptopPoll.mem : null, accounts: laptopAccounts },
     totals, accounts: readAccounts(), setup: { ...C.setup(), start }, now: Date.now(),
+    app: { name: C.APP_NAME, version: app.getVersion() },
   };
 }
 // one stamp per session for the time-in-state column, and the taskbar flash on a transition into waiting or failed while the window is in the background
@@ -310,11 +330,21 @@ function noteTransitions() {
     const was = stateKeys.get(id);
     if (key === was) continue;
     stateKeys.set(id, key); r.stateSince = Date.now();
-    if (was === undefined || !win || win.isDestroyed() || win.isFocused()) continue;
-    if (r.status === 'live' && (r.state === 'waiting' || r.glyph === 'failed') && (!state.ui || state.ui.flash !== false)) { win.flashFrame(true); log('attention flash', (byId(id) || {}).name, was, '->', key); }
+    // the window showing the session flashes, or the one used last when none is
+    const win = wins.get(owner.get(id)) || mainWin();
+    if (was === undefined || !live(win) || win.isFocused()) continue;
+    if (r.status === 'live' && (r.state === 'waiting' || r.glyph === 'failed') && state.ui.flash !== false) { win.flashFrame(true); log('attention flash', (byId(id) || {}).name, was, '->', key); }
   }
 }
-function pushSnapshot() { noteTransitions(); send('desk:snapshot', snapshot()); }
+// the full snapshot goes out only when something in it changed, or every 30 s for the clocks in it (limit resets); between, a tick keeps the age honest
+let lastSnapSig = '', lastSnapAt = 0;
+function pushSnapshot() {
+  noteTransitions();
+  const s = snapshot(), { now, ...rest } = s, sig = JSON.stringify(rest);
+  if (sig === lastSnapSig && now - lastSnapAt < 30000) { send('desk:tick', now); return; }
+  lastSnapSig = sig; lastSnapAt = now;
+  send('desk:snapshot', s);
+}
 
 // Usage limits per account from the status files the Claude sessions write. Read on each snapshot, cached for 10 s.
 let accountsCache = { at: 0, v: {} };
@@ -330,7 +360,8 @@ function readAccounts() {
   if (C.STATUS) for (const n of accounts.ids()) {
     try {
       const j = JSON.parse(fs.readFileSync(path.join(C.STATUS, `claude-${n}.json`), 'utf8'));
-      v[n] = { five_hour: j.five_hour ?? null, seven_day: j.seven_day ?? null, five_hour_reset: j.five_hour_reset ?? null, seven_day_reset: j.seven_day_reset ?? null, updated: j.updated ?? null };
+      // a plain terminal session's file only wins when it is newer than what Desk's own sessions reported
+      if (!v[n] || !v[n].updated || (j.updated || 0) > v[n].updated) v[n] = { five_hour: j.five_hour ?? null, seven_day: j.seven_day ?? null, five_hour_reset: j.five_hour_reset ?? null, seven_day_reset: j.seven_day_reset ?? null, updated: j.updated ?? null };
     } catch { /* missing or mid-write */ }
     const cost = readCost(n);
     if (cost) v[n] = Object.assign(v[n] || {}, { cost });
@@ -407,11 +438,12 @@ async function stopSession(id) {
 async function forgetSession(id) {
   const s = byId(id); if (!s) return;
   await stopSession(id);
-  if (s.machine === 'pc') { pc.drop(id); reg.cleanupFiles(s.name, s.tag); }
+  if (s.machine === 'pc') { pc.drop(id); reg.cleanupFiles(s.name, s.tag); if (oneLiner) oneLiner.forget(id); }
   else await laptop.cleanup(s.name, s.tag, true);
   state.sessions = state.sessions.filter(x => x.id !== id);
   runtime.delete(id);
-  for (const v of Object.values(state.ui.views || {})) if (v.slots) v.slots = v.slots.map(x => x === id ? null : x);
+  for (const w of state.windows) for (const v of Object.values(w.views || {})) if (v && v.slots) v.slots = v.slots.map(x => x === id ? null : x);
+  owner.delete(id);
   stateMod.save(state);
 }
 
@@ -461,8 +493,11 @@ function boot() {
   pollPc();
   const entries = reg.readRegistry().filter(reg.isLive);
   // each resumed Claude session is 400 MB or more of RAM, so by default only the panes of the project last shown come back
-  const cur = state.ui && state.ui.current, view = cur && state.ui.views && state.ui.views[cur];
-  const open = new Set(C.RESUME === 'current' && view ? (view.slots || []).filter(Boolean) : []);
+  const open = new Set();
+  if (C.RESUME === 'current') for (const w of state.windows) {
+    const view = w.current && w.views && w.views[w.current];
+    if (view) for (const id of view.slots || []) if (id) open.add(id);
+  }
   start = { policy: C.RESUME, started: 0, waiting: 0, saved: 0 };
   for (const s of state.sessions.filter(x => x.machine === 'pc').sort((a, b) => a.order - b.order)) {
     start.saved++;
@@ -476,15 +511,118 @@ function boot() {
   laptop.connect();
   setInterval(() => { pollPc(); pushSnapshot(); }, C.POLL_PC_MS);
   setInterval(pollLaptop, C.POLL_LAPTOP_MS);
+  if (oneLiner) oneLiner.start();
   samplePcMemory().catch(() => {});
   let memTick = 0;
-  setInterval(() => { memTick++; if ((state.ui && state.ui.showMem) || memTick % C.MEMORY_IDLE_TICKS === 0) samplePcMemory().catch(() => {}); }, C.MEMORY_MS);
+  setInterval(() => { memTick++; if (state.ui.showMem || memTick % C.MEMORY_IDLE_TICKS === 0) samplePcMemory().catch(() => {}); }, C.MEMORY_MS);
+}
+
+// ---------- windows ----------
+// each window is a record in state.windows (its layout and bounds) plus a BrowserWindow while it is open
+function windowList() {
+  return state.windows.filter(r => wins.has(r.wid)).map(r => ({ wid: r.wid, n: state.windows.indexOf(r) + 1, current: r.current || null, focused: r.wid === lastFocused }));
+}
+const windowName = wid => { const i = state.windows.findIndex(r => r.wid === wid); return i <= 0 ? C.APP_NAME : `${C.APP_NAME} (window ${i + 1})`; };
+function newRecord(o) {
+  const wid = state.windows.reduce((m, r) => Math.max(m, r.wid), 0) + 1;
+  const rec = { wid, views: {}, ...o };
+  state.windows.push(rec);
+  stateMod.save(state);
+  return rec;
+}
+// a saved window comes back where it was, unless that screen is gone
+function placeBounds(b) {
+  if (!b || ![b.x, b.y, b.width, b.height].every(Number.isFinite)) return null;
+  const onScreen = screen.getAllDisplays().some(d => { const a = d.workArea; return b.x < a.x + a.width - 80 && b.x + b.width > a.x + 80 && b.y >= a.y - 8 && b.y < a.y + a.height - 40; });
+  return onScreen ? { x: b.x, y: b.y, width: Math.max(480, b.width), height: Math.max(360, b.height) } : { width: Math.max(480, b.width), height: Math.max(360, b.height) };
+}
+function keepBounds(wid) {
+  const w = wins.get(wid), rec = state.windows.find(r => r.wid === wid);
+  if (!live(w) || !rec) return;
+  rec.bounds = w.getNormalBounds(); rec.maximized = w.isMaximized();
+  stateMod.save(state);
+}
+function createWindow(rec, opts = {}) {
+  const at = placeBounds(rec.bounds) || {};
+  // a new window steps down and right from the one it came from, like a browser
+  const from = opts.from && wins.get(opts.from);
+  if (!rec.bounds && live(from)) { const b = from.getNormalBounds(); Object.assign(at, { x: b.x + 32, y: b.y + 32, width: b.width, height: b.height }); }
+  const win = new BrowserWindow({
+    width: 1600, height: 950, ...at, minWidth: 480, minHeight: 360, show: false,
+    title: windowName(rec.wid), backgroundColor: '#0C0C0C',
+    // Desk draws its own menu bar; Windows keeps the caption buttons and Snap layouts
+    titleBarStyle: 'hidden', titleBarOverlay: { color: '#060606', symbolColor: '#C8C8C8', height: TITLE_H },
+    icon: path.join(__dirname, '..', 'assets', 'icon.ico'),
+    webPreferences: { preload: path.join(__dirname, '..', 'preload.js'), backgroundThrottling: false, contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true, webviewTag: false, spellcheck: false },
+  });
+  const wid = rec.wid;
+  wins.set(wid, win);
+  win.setMenuBarVisibility(false);
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // the page never leaves index.html: a dropped file or a stray link would otherwise load with the desk API
+  win.webContents.on('will-navigate', e => e.preventDefault());
+  win.webContents.on('will-redirect', e => e.preventDefault());
+  win.webContents.on('will-attach-webview', e => e.preventDefault());
+  win.webContents.on('before-input-event', (e, input) => { if (input.type === 'keyDown' && input.key === 'F12') { if (!app.isPackaged) win.webContents.toggleDevTools(); e.preventDefault(); } });
+  win.webContents.on('did-finish-load', () => {
+    const z = Number(state.ui.uiScale); if (z && z !== 1) win.webContents.setZoomFactor(Math.min(1.6, Math.max(0.8, z)));
+    if (!C.CLAUDE_EXE && wins.size === 1) setTimeout(() => toast('Claude Code was not found. Open Settings and point Desk at claude.exe.', 'error'), 800);
+  });
+  win.webContents.on('console-message', (_e, level, msg, line, src) => { if (level >= 2) log('console', wid, level, msg, `${src}:${line}`); });
+  win.webContents.on('render-process-gone', (_e, d) => log('renderer gone', wid, JSON.stringify(d)));
+  win.once('ready-to-show', () => { if (rec.maximized) win.maximize(); win.show(); });
+  win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  let moveTimer = null;
+  const later = () => { clearTimeout(moveTimer); moveTimer = setTimeout(() => keepBounds(wid), 500); };
+  win.on('resize', later); win.on('move', later);
+  win.on('focus', () => { win.flashFrame(false); if (lastFocused !== wid) { lastFocused = wid; pushSnapshot(); } });
+  win.on('close', () => {
+    log('window close event', wid);
+    clearTimeout(moveTimer); keepBounds(wid);
+    // the last window keeps its record so it reopens; any other is gone for good, its sessions keep running
+    if (!quitting && wins.size > 1) { state.windows = state.windows.filter(r => r.wid !== wid); stateMod.save(state); }
+  });
+  win.on('closed', () => {
+    wins.delete(wid);
+    for (const [id, w] of owner) if (w === wid) owner.delete(id);
+    if (lastFocused === wid) lastFocused = wins.keys().next().value || null;
+    for (const [w, bw] of wins) if (live(bw)) bw.setTitle(windowName(w));
+    if (wins.size) pushSnapshot();
+  });
+  if (DEBUG_DIR) debugHooks(win);
+  if (!lastFocused) lastFocused = wid;
+  return win;
+}
+function openWindow(o, from) {
+  const rec = newRecord(o || {});
+  const win = createWindow(rec, { from });
+  lastFocused = rec.wid;
+  pushSnapshot();
+  return { wid: rec.wid, win };
+}
+// a session moves by taking its slot out of every other window; the target places it once its page is up
+function moveSession(id, to, from) {
+  const s = byId(id); if (!s) throw new Error('no such session');
+  const pkey = key(s.machine, s.project);
+  for (const r of state.windows) for (const v of Object.values(r.views || {})) if (v && v.slots) v.slots = v.slots.map(x => x === id ? null : x);
+  let wid = to;
+  if (to === 'new') {
+    wid = openWindow({ current: pkey, nav: 'projects', views: { [pkey]: { n: 1, slots: [id], focus: 0 } } }, from).wid;
+  } else {
+    if (!wins.has(wid)) throw new Error('no such window');
+    sendTo(wid, 'desk:place', id);
+    const w = wins.get(wid); if (w.isMinimized()) w.restore(); w.focus();
+  }
+  for (const other of wins.keys()) if (other !== wid) sendTo(other, 'desk:released', id, wid);
+  stateMod.save(state);
+  return wid;
 }
 
 // ---------- IPC ----------
-// only Desk's own page may call in; a frame that navigated elsewhere, or a second window, gets nothing
+// only Desk's own pages may call in; a frame that navigated elsewhere gets nothing
 function trusted(e) {
-  return !!win && !win.isDestroyed() && e.sender === win.webContents && e.senderFrame === win.webContents.mainFrame && /^file:/.test(e.senderFrame.url);
+  const wid = winOf(e);
+  return wid != null && e.senderFrame === wins.get(wid).webContents.mainFrame && /^file:/.test(e.senderFrame.url);
 }
 function handle(ch, fn) { ipcMain.handle(ch, (e, ...a) => { if (!trusted(e)) { log('ipc refused', ch); throw new Error('refused'); } return fn(e, ...a); }); }
 function on(ch, fn) { ipcMain.on(ch, (e, ...a) => { if (trusted(e)) fn(e, ...a); else log('ipc refused', ch); }); }
@@ -504,13 +642,18 @@ function startOpts(o) {
   return { machine, project: machine === 'pc' ? path.normalize(o.project) : o.project, account, kind };
 }
 
-handle('desk:init', () => { boot(); return snapshot(); });
+handle('desk:init', e => { boot(); const wid = winOf(e); return { ...snapshot(), wid, ui: stateMod.uiFor(state, wid) }; });
 handle('desk:start', (_e, opts) => { const s = createSession(startOpts(opts)); launch(s, { resume: false }); return { ...s, ...rt(s.id) }; });
 handle('desk:resume', (_e, id) => { const s = byId(id); if (s) launch(s, { resume: true }); });
 handle('desk:stop', (_e, id) => stopSession(id));
 handle('desk:forget', (_e, id) => forgetSession(id));
-handle('desk:attach', async (_e, id, cols, rows) => {
+handle('desk:attach', async (e, id, cols, rows) => {
   const s = byId(id); if (!s) return { replay: '' };
+  // one window shows a session at a time, so two never fight over its size; the one that had it lets go
+  const wid = winOf(e), was = owner.get(id);
+  if (was != null && was !== wid) sendTo(was, 'desk:released', id, wid);
+  owner.set(id, wid);
+  if (was !== wid) pushSnapshot();
   cols = cells(cols, 2, 1000); rows = cells(rows, 2, 500);
   if (cols > 0 && rows > 0) pc.setDefaultSize(cols, rows);
   // output still waiting in outBuf is already in the ring, so the replay carries it
@@ -521,10 +664,44 @@ handle('desk:attach', async (_e, id, cols, rows) => {
 on('desk:write', (_e, id, data) => { const s = byId(id); if (!s || typeof data !== 'string') return; if (s.machine === 'pc') pc.write(id, data); else laptop.write(id, data); });
 on('desk:resize', (_e, id, cols, rows) => { const s = byId(id); if (!s) return; cols = cells(cols, 2, 1000); rows = cells(rows, 2, 500); if (s.machine === 'pc') pc.resize(id, cols, rows); else laptop.resize(id, cols, rows); });
 handle('desk:say', (_e, projectKey, text) => sayToProject(projectKey, text));
-on('desk:ui', (_e, ui) => { if (!ui || typeof ui !== 'object' || Array.isArray(ui)) return; state.ui = ui; stateMod.save(state); });
-handle('desk:addProject', async (_e, machine, dir) => {
+on('desk:ui', (e, ui) => {
+  if (!ui || typeof ui !== 'object' || Array.isArray(ui)) return;
+  const wid = winOf(e);
+  // a preference changed in one window (theme, font, scale) is applied by the others too
+  if (stateMod.mergeUi(state, wid, ui)) for (const other of wins.keys()) if (other !== wid) sendTo(other, 'desk:prefs', state.ui);
+  stateMod.save(state);
+});
+const dialogWin = e => BrowserWindow.fromWebContents(e.sender) || mainWin();
+handle('desk:newWindow', (e, o) => {
+  o = o && typeof o === 'object' ? o : {};
+  if (typeof o.session === 'string') return moveSession(o.session, 'new', winOf(e));
+  const project = typeof o.project === 'string' && [...pcProjects(), ...laptopProjects()].some(p => p.key === o.project) ? o.project : null;
+  return openWindow(project ? { current: project, nav: 'projects' } : { nav: 'home' }, winOf(e)).wid;
+});
+handle('desk:moveSession', (e, id, to) => moveSession(id, to === 'new' ? 'new' : Number(to), winOf(e)));
+handle('desk:focusWindow', (_e, wid) => { const w = wins.get(Number(wid)); if (!live(w)) return false; if (w.isMinimized()) w.restore(); w.focus(); return true; });
+on('desk:closeWindow', e => { const w = BrowserWindow.fromWebContents(e.sender); if (w) w.close(); });
+on('desk:quit', () => app.quit());
+const HEX = /^#[0-9a-f]{6}$/i;
+on('desk:titleBar', (e, o) => {
+  const w = BrowserWindow.fromWebContents(e.sender);
+  if (!w || !o || !HEX.test(o.color) || !HEX.test(o.symbolColor)) return;
+  try { w.setTitleBarOverlay({ color: o.color, symbolColor: o.symbolColor, height: TITLE_H }); } catch { /* not on this platform */ }
+});
+on('desk:fullScreen', e => { const w = BrowserWindow.fromWebContents(e.sender); if (w) w.setFullScreen(!w.isFullScreen()); });
+// File > New project: a new folder under the projects root, which then shows in the sidebar like any other
+handle('desk:newProject', (_e, name) => {
+  const why = stateMod.checkProjectName(name, C.PROJECTS_ROOT);
+  if (why) return { error: why };
+  const dir = path.join(C.PROJECTS_ROOT, name.trim());
+  fs.mkdirSync(dir);
+  log('new project', dir);
+  pushSnapshot();
+  return { dir, key: key('pc', dir) };
+});
+handle('desk:addProject', async (e, machine, dir) => {
   if (machine === 'pc' && !dir) {
-    const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'], defaultPath: C.PROJECTS_ROOT || undefined });
+    const r = await dialog.showOpenDialog(dialogWin(e), { properties: ['openDirectory'], defaultPath: C.PROJECTS_ROOT || undefined });
     if (r.canceled || !r.filePaths.length) return null;
     dir = r.filePaths[0];
   }
@@ -571,6 +748,7 @@ handle('desk:setSettings', (_e, patch) => {
   if ('carryOn' in (patch || {})) allowed.carryOn = patch.carryOn === true ? true : null;
   if ('usage' in (patch || {})) allowed.usage = patch.usage === 'off' ? 'off' : null;
   if ('updates' in (patch || {})) allowed.updates = patch.updates === 'off' ? 'off' : null;
+  if ('oneLiner' in (patch || {})) allowed.oneLiner = patch.oneLiner === 'off' ? 'off' : null;
   C.writeSettings(allowed);
   log('settings', JSON.stringify(allowed));
   pushSnapshot();
@@ -600,9 +778,9 @@ handle('desk:checkUpdate', async () => {
   const latest = r && r.updateInfo && r.updateInfo.version;
   return { current, latest, note: latest && latest !== current ? `Downloading ${latest}` : 'Desk is up to date' };
 });
-handle('desk:pickPath', async (_e, what, defaultPath) => {
+handle('desk:pickPath', async (e, what, defaultPath) => {
   const file = what === 'file';
-  const r = await dialog.showOpenDialog(win, { properties: [file ? 'openFile' : 'openDirectory'], defaultPath: typeof defaultPath === 'string' && defaultPath ? defaultPath : undefined, filters: file ? [{ name: 'Programs', extensions: ['exe'] }] : [] });
+  const r = await dialog.showOpenDialog(dialogWin(e), { properties: [file ? 'openFile' : 'openDirectory'], defaultPath: typeof defaultPath === 'string' && defaultPath ? defaultPath : undefined, filters: file ? [{ name: 'Programs', extensions: ['exe'] }] : [] });
   return r.canceled || !r.filePaths.length ? null : r.filePaths[0];
 });
 handle('desk:openPath', (_e, what) => {
@@ -612,12 +790,13 @@ handle('desk:openPath', (_e, what) => {
   if (what === 'settings' && !fs.existsSync(target)) C.writeSettings({});
   return shell.openPath(target);
 });
-on('desk:zoom', (_e, factor) => { const f = Math.min(1.6, Math.max(0.8, Number(factor) || 1)); if (win) win.webContents.setZoomFactor(f); });
+// the ui scale is app-wide, so every window takes it
+on('desk:zoom', (_e, factor) => { const f = Math.min(1.6, Math.max(0.8, Number(factor) || 1)); for (const w of wins.values()) if (live(w)) w.webContents.setZoomFactor(f); });
 handle('desk:clipRead', () => clipboard.readText());
 on('desk:clipWrite', (_e, text) => clipboard.writeText(String(text || '').slice(0, 10 * 1024 * 1024)));
 // Ctrl+click on a terminal link: only http and https leave the app, in the default browser
 on('desk:openUrl', (_e, url) => { try { const u = new URL(String(url)); if (u.protocol === 'http:' || u.protocol === 'https:') shell.openExternal(u.href); } catch { /* not a URL */ } });
-on('desk:devtools', () => { if (win && !app.isPackaged) win.webContents.toggleDevTools(); });
+on('desk:devtools', e => { if (!app.isPackaged) e.sender.toggleDevTools(); });
 
 // ---------- debug channel (scripted evidence only: a source checkout with DESK_DEBUG_DIR set) ----------
 // it runs any JavaScript it is handed, so an installed build never has it
@@ -627,9 +806,11 @@ if (DEBUG_DIR) {
   // commands left over from an earlier run are not this run's to execute
   for (const f of fs.readdirSync(DEBUG_DIR)) if (f.endsWith('.json') && !f.endsWith('.out.json')) { try { fs.unlinkSync(path.join(DEBUG_DIR, f)); } catch { /* busy */ } }
   log('debug channel on', DEBUG_DIR);
+  // every op that touches a window takes an optional `win` (a wid); the window used last is the default
+  const W = c => { const w = (c && c.win != null && wins.get(Number(c.win))) || mainWin(); if (!live(w)) throw new Error('no window'); return w; };
   const handlers = {
-    shot: async c => { const img = await win.capturePage(); fs.writeFileSync(c.file, img.toPNG()); return { ok: true, file: c.file }; },
-    eval: async c => win.webContents.executeJavaScript(c.js, true),
+    shot: async c => { const img = await W(c).capturePage(); fs.writeFileSync(c.file, img.toPNG()); return { ok: true, file: c.file }; },
+    eval: async c => W(c).webContents.executeJavaScript(c.js, true),
     snapshot: async () => snapshot(),
     start: async c => { const s = createSession(c); launch(s, { resume: false }); return s; },
     resume: async c => { const s = byId(c.id); if (s) launch(s, { resume: true }); return s; },
@@ -638,12 +819,19 @@ if (DEBUG_DIR) {
     say: async c => sayToProject(c.projectKey, c.text),
     write: async c => { const s = byId(c.id); if (s.machine === 'pc') pc.write(c.id, c.text); else laptop.write(c.id, c.text); return true; },
     memory: async () => { await samplePcMemory(); await pollLaptop(); return snapshot(); },
+    windows: async () => ({ list: windowList(), records: state.windows, owners: Object.fromEntries(owner) }),
+    newWindow: async c => openWindow(c.project ? { current: c.project, nav: 'projects' } : { nav: 'home' }).wid,
+    move: async c => moveSession(c.id, c.to, null),
+    close: async c => { W(c).close(); return true; },
+    bounds: async c => { const w = W(c); if (c.bounds) w.setBounds(c.bounds); return w.getBounds(); },
+    // Desk's own processes by type, from Chromium's own accounting (working set and private bytes, in MB)
+    metrics: async () => app.getAppMetrics().map(m => ({ pid: m.pid, type: m.type, name: m.name || m.serviceName || '', ws_mb: Math.round(m.memory.workingSetSize / 102.4) / 10, priv_mb: Math.round((m.memory.privateBytes || 0) / 102.4) / 10 })),
     quit: async () => { setTimeout(() => app.quit(), 100); return true; },
     menu: async () => { const m = Menu.getApplicationMenu(); return m ? m.items.map(i => ({ label: i.label, items: i.submenu ? i.submenu.items.map(x => ({ label: x.label, role: x.role, acc: x.accelerator })) : [] })) : null; },
-    key: async c => { for (const ev of c.events) { win.webContents.sendInputEvent(ev); await new Promise(r => setTimeout(r, c.gap || 30)); } return true; },
+    key: async c => { const win = W(c); for (const ev of c.events) { win.webContents.sendInputEvent(ev); await new Promise(r => setTimeout(r, c.gap || 30)); } return true; },
     // frame series for the design evidence: capturePage every `every` ms, `n` frames, optional rect
     burst: async c => {
-      const n = c.n || 20, every = c.every || 50, dir = c.dir;
+      const n = c.n || 20, every = c.every || 50, dir = c.dir, win = W(c);
       fs.mkdirSync(dir, { recursive: true });
       const frames = [], t0 = Date.now();
       for (let i = 0; i < n; i++) {
@@ -675,51 +863,35 @@ if (DEBUG_DIR) {
 }
 
 // ---------- window ----------
+// close and shutdown traces, for the debug build only
+function debugHooks(win) {
+  const u32 = b => (b && b.length >= 4) ? b.readUInt32LE(0) : null;
+  const where = () => { try { const c = screen.getCursorScreenPoint(), b = win.getBounds();
+    return JSON.stringify({ focused: win.isFocused(), visible: win.isVisible(), minimized: win.isMinimized(), cursor: c, bounds: b,
+      inWindow: c.x >= b.x && c.x <= b.x + b.width && c.y >= b.y && c.y <= b.y + b.height, nearClose: c.x >= b.x + b.width - 60 && c.y >= b.y && c.y <= b.y + 40 }); } catch (e) { return e.message; } };
+  win.hookWindowMessage(0x0010, () => log('WM_CLOSE', where()));
+  win.hookWindowMessage(0x0112, (w, l) => { const c = u32(w); if (c !== null && (c & 0xFFF0) === 0xF060) log('WM_SYSCOMMAND SC_CLOSE lParam', u32(l), where()); });
+  win.hookWindowMessage(0x0011, () => log('WM_QUERYENDSESSION'));
+  win.hookWindowMessage(0x0016, (w, l) => log('WM_ENDSESSION', u32(w), u32(l)));
+}
 app.whenReady().then(() => {
-  win = new BrowserWindow({
-    width: 1600, height: 950, minWidth: 900, minHeight: 500,
-    title: C.APP_NAME, backgroundColor: '#0C0C0C', icon: path.join(__dirname, '..', 'assets', 'icon.ico'),
-    webPreferences: { preload: path.join(__dirname, '..', 'preload.js'), backgroundThrottling: false, contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true, webviewTag: false, spellcheck: false },
-  });
   // no menu at all: the default one owns Ctrl+W, Ctrl+R, Ctrl+Plus and friends, which must reach the terminal
   Menu.setApplicationMenu(null);
-  win.setMenuBarVisibility(false);
-  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  // the page never leaves index.html: a dropped file or a stray link would otherwise load with the desk API
-  win.webContents.on('will-navigate', e => e.preventDefault());
-  win.webContents.on('will-redirect', e => e.preventDefault());
-  win.webContents.on('will-attach-webview', e => e.preventDefault());
-  win.webContents.session.setPermissionRequestHandler((_wc, perm, cb) => cb(perm === 'notifications' || perm === 'clipboard-sanitized-write'));
-  win.webContents.on('before-input-event', (e, input) => { if (input.type === 'keyDown' && input.key === 'F12') { if (!app.isPackaged) win.webContents.toggleDevTools(); e.preventDefault(); } });
-  win.webContents.on('did-finish-load', () => {
-    const z = Number(state.ui && state.ui.uiScale); if (z && z !== 1) win.webContents.setZoomFactor(Math.min(1.6, Math.max(0.8, z)));
-    if (!C.CLAUDE_EXE) setTimeout(() => toast('Claude Code was not found. Open Settings and point Desk at claude.exe.', 'error'), 800);
-  });
-  win.webContents.on('console-message', (_e, level, msg, line, src) => { if (level >= 2) log('console', level, msg, `${src}:${line}`); });
-  win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
-  win.on('close', () => log('window close event'));
+  const { session } = require('electron');
+  session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(perm === 'notifications' || perm === 'clipboard-sanitized-write'));
   if (DEBUG_DIR) {
-    const u32 = b => (b && b.length >= 4) ? b.readUInt32LE(0) : null;
-    const where = () => { try { const c = screen.getCursorScreenPoint(), b = win.getBounds();
-      return JSON.stringify({ focused: win.isFocused(), visible: win.isVisible(), minimized: win.isMinimized(), cursor: c, bounds: b,
-        inWindow: c.x >= b.x && c.x <= b.x + b.width && c.y >= b.y && c.y <= b.y + b.height, nearClose: c.x >= b.x + b.width - 60 && c.y >= b.y && c.y <= b.y + 40 }); } catch (e) { return e.message; } };
-    win.hookWindowMessage(0x0010, () => log('WM_CLOSE', where()));
-    win.hookWindowMessage(0x0112, (w, l) => { const c = u32(w); if (c !== null && (c & 0xFFF0) === 0xF060) log('WM_SYSCOMMAND SC_CLOSE lParam', u32(l), where()); });
-    win.hookWindowMessage(0x0011, () => log('WM_QUERYENDSESSION'));
-    win.hookWindowMessage(0x0016, (w, l) => log('WM_ENDSESSION', u32(w), u32(l)));
     app.on('session-end', e => log('session-end', JSON.stringify(e && e.reasons)));
     for (const sig of ['SIGHUP', 'SIGINT', 'SIGBREAK', 'SIGTERM']) process.on(sig, () => log('signal', sig));
-    win.on('close', () => { let alive = true; try { process.kill(process.ppid, 0); } catch (e) { alive = e.code === 'EPERM'; }
-      log('close detail', JSON.stringify({ pid: process.pid, ppid: process.ppid, ppidAlive: alive })); });
     const fdType = fd => { try { const st = fs.fstatSync(fd); return st.isFIFO() ? 'pipe' : st.isFile() ? 'file' : st.isCharacterDevice() ? 'char' : 'other'; } catch (e) { return 'none'; } };
     log('stdio', JSON.stringify({ pid: process.pid, ppid: process.ppid, stdinTTY: !!process.stdin.isTTY, fds: [0, 1, 2].map(fdType), env: { CLAUDECODE: process.env.CLAUDECODE || '', CHILD: process.env.CLAUDE_CODE_CHILD_SESSION || '' } }));
   }
-  win.on('focus', () => win.flashFrame(false));
-  win.webContents.on('render-process-gone', (_e, d) => log('renderer gone', JSON.stringify(d)));
-  log('window up', app.getVersion(), 'electron', process.versions.electron);
+  // every window open at the last quit comes back
+  for (const rec of [...state.windows]) createWindow(rec);
+  lastFocused = state.windows[0].wid;
+  log('window up', app.getVersion(), 'electron', process.versions.electron, 'windows', state.windows.length);
   startUpdater();
 });
-app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
+app.on('second-instance', () => { const w = mainWin(); if (live(w)) { if (w.isMinimized()) w.restore(); w.focus(); } });
 app.on('window-all-closed', () => { log('window-all-closed'); app.quit(); });
 app.on('child-process-gone', (_e, d) => log('child process gone', JSON.stringify(d)));
 app.on('before-quit', () => {

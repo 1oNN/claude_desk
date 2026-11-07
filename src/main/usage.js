@@ -27,13 +27,18 @@ function prune() {
   for (const f of files) { try { const r = JSON.parse(fs.readFileSync(path.join(STATUS, f), 'utf8')); if ((r.t || 0) < cut) fs.unlinkSync(path.join(STATUS, f)); } catch { /* mid-write */ } }
 }
 
-// someone who already has a status line keeps it; that account then shows no usage in Desk
-function ownStatusLine(account) {
-  try { return !!JSON.parse(fs.readFileSync(path.join(accounts.configDir(account), 'settings.json'), 'utf8')).statusLine; } catch { return false; }
+// the account's own status line command, if it has one
+function ownStatusCommand(account) {
+  try {
+    const s = JSON.parse(fs.readFileSync(path.join(accounts.configDir(account), 'settings.json'), 'utf8')).statusLine;
+    return s && s.type === 'command' && typeof s.command === 'string' ? s.command : null;
+  } catch { return null; }
 }
 
+// your own status line wins, except in alliance mode, where Desk's one line replaces the nine (statusLine 'own' keeps them)
 function settingsArg(account) {
-  if (C.ALLIANCE || C.SETTINGS.usage === 'off' || ownStatusLine(account)) return null;
+  if (C.SETTINGS.usage === 'off') return null;
+  if ((!C.ALLIANCE || C.SETTINGS.statusLine === 'own') && ownStatusCommand(account)) return null;
   return fs.existsSync(SETTINGS) ? SETTINGS : null;
 }
 
@@ -70,4 +75,4 @@ function read() {
   return v;
 }
 
-module.exports = { install, settingsArg, read, STATUS };
+module.exports = { install, settingsArg, ownStatusCommand, read, STATUS };

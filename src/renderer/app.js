@@ -1,4 +1,6 @@
 let snap = null;
+let myWid = null; // which Desk window this page is
+const LAYOUT_KEYS = ['current', 'views', 'nav', 'sidebar', 'expanded'];
 let ui = { current: null, views: {}, expanded: {}, lastAccount: {}, nav: 'projects', theme: '', sidebar: { w: 300, collapsed: false, hidden: false }, showMem: false, picker: {}, flash: true, notify: false, uiScale: 1, termFont: 14, zoom: {}, termZoom: {} };
 const NAVS = ['home', 'projects', 'attention', 'settings'];
 let dragId = null;
@@ -8,6 +10,12 @@ const $$ = s => document.querySelectorAll(s);
 const sessionById = id => snap && snap.sessions.find(s => s.id === id);
 const projectByKey = k => snap && snap.projects.find(p => p.key === k);
 const currentProject = () => projectByKey(ui.current);
+// the other Desk window a session is shown in, or null when it is here or nowhere
+function awayWin(id) {
+  const w = snap && snap.owners && snap.owners[id];
+  if (!w || w === myWid) return null;
+  return (snap.windows || []).find(x => x.wid === w) || null;
+}
 
 const MAXP = 8, EMPTY = () => Array(MAXP).fill(null);
 function view(key) {
@@ -53,7 +61,8 @@ function clearToasts() { for (const t of [...$('#toasts').children]) dismissToas
 const H = {
   onProject: key => showProject(key),
   onToggle: (key, open) => { ui.expanded[key] = open; saveUi(); renderSidebar(); },
-  onSession: s => { if (s.machine + ':' + s.project !== ui.current) showProject(s.machine + ':' + s.project); placeInFocused(s.id); },
+  onSession: s => { const w = awayWin(s.id); if (w) { desk.focusWindow(w.wid); return; } if (s.machine + ':' + s.project !== ui.current) showProject(s.machine + ':' + s.project); placeInFocused(s.id); },
+  awayN: s => { const w = awayWin(s.id); return w ? w.n : 0; },
   onNewSession: p => { showProject(p.key); newSession('claude'); },
   onStop: s => { if (confirm(`Stop ${s.name}? It can be resumed later from the sidebar.`)) desk.stopSession(s.id); },
   onForget: s => { if (confirm(`Forget ${s.name}? Its tag and status files are removed. The transcript stays on disk.`)) forget(s.id); },
@@ -95,19 +104,19 @@ const STATE_COLOUR = { working: 'working', waiting: 'waiting', finished: 'finish
 function renderShell() {
   const nav = NAVS.includes(ui.nav) ? ui.nav : 'projects';
   for (const b of $$('#activity .act')) { b.classList.toggle('on', b.dataset.nav === nav); Dom.attr(b, 'aria-current', b.dataset.nav === nav ? 'page' : null); }
-  $('#home').hidden = !(nav === 'home' || nav === 'attention' || !ui.current);
-  $('#sidebar-scroll').hidden = nav === 'settings';
-  $('#settings').hidden = nav !== 'settings';
-  for (const b of $$('#theme-seg button')) b.classList.toggle('on', b.dataset.theme === (ui.theme || ''));
-  for (const b of $$('#scale-seg button')) b.classList.toggle('on', Number(b.dataset.scale) === (ui.uiScale || 1));
+  $('#home').hidden = nav === 'settings' || !(nav === 'home' || nav === 'attention' || !ui.current);
   renderZoom();
   applyZoom();
-  for (const b of $$('#tfont-seg button')) b.classList.toggle('on', Number(b.dataset.font) === (ui.termFont || 14));
-  renderAttentionSettings();
-  if (!$('#settings').hidden) renderSetup();
+  if (typeof Settings !== 'undefined') Settings.show(nav === 'settings');
   const app = $('#app');
   app.classList.toggle('sb-collapsed', !!ui.sidebar.collapsed);
+  app.classList.toggle('sb-over', sbOver && narrow());
   app.classList.toggle('sb-hidden', !!ui.sidebar.hidden);
+  app.classList.toggle('st-hidden', !!ui.statusHidden);
+  if (window.Menubar) Menubar.render();
+  const root = snap && snap.setup && snap.setup.projectsRoot;
+  $('#sb-new').disabled = !root;
+  Dom.attr($('#sb-new'), 'title', root ? `New project in ${root}` : 'New project: set a projects folder in Settings first');
   const pb = $('#panel-btn'), hid = !!ui.sidebar.hidden, pt = hid ? 'Show the left panel (Ctrl+Shift+B)' : 'Hide the left panel (Ctrl+Shift+B)';
   pb.classList.toggle('on', hid); Dom.attr(pb, 'aria-pressed', String(hid)); Dom.attr(pb, 'title', pt); Dom.attr(pb, 'aria-label', pt.replace(/ \(.*$/, ''));
   renderMemToggle();
@@ -131,12 +140,22 @@ function renderStatus() {
   const a = $('#st-attn');
   a.classList.toggle('attn', attn > 0);
   Dom.text(a, attn ? `${attn} need${attn === 1 ? 's' : ''} you` : 'nothing waiting');
+  const p = currentProject(), sp = $('#st-proj'), sa = $('#st-acc');
+  sp.hidden = !p; if (p) Dom.text(sp, p.name + (p.machine === 'laptop' ? ' (laptop)' : ''));
+  sa.hidden = !p || accountsFor(p).length < 2;
+  if (!sa.hidden) { Dom.text(sa, accName(currentAccount())); Dom.attr(sa, 'title', `New Claude sessions start as ${accName(currentAccount())}. Click to pick another`); }
   const badge = $('#attn-badge');
   badge.hidden = !attn; Dom.text(badge, attn ? String(attn) : '');
-  const nm = (snap.setup && snap.setup.appName) || 'Claude Desk';
-  const title = attn ? `(${attn}) ${nm}` : nm;
-  if (document.title !== title) document.title = title;
+  titleAttn = attn; setTitle();
   renderAge();
+}
+let titleAttn = 0;
+// project, app name and window number, led by how many sessions need you
+function setTitle() {
+  const nm = (snap && snap.setup && snap.setup.appName) || 'Claude Desk';
+  const p = currentProject(), me = (snap && snap.windows || []).find(w => w.wid === myWid);
+  const t = (titleAttn ? `(${titleAttn}) ` : '') + (p ? `${p.name} - ` : '') + nm + (me && me.n > 1 ? ` (window ${me.n})` : '');
+  if (document.title !== t) document.title = t;
 }
 function renderAge() {
   if (!snap) return;
@@ -160,40 +179,76 @@ function fmtAge(ms) {
 }
 
 
-// home setup card: what Desk found on this PC; shown while something is missing or there is nothing to show yet
-let lastSetupSig = '';
-function renderSetupCard() {
-  const box = $('#home-setup');
-  const su = snap.setup;
-  const show = !!su && ui.nav !== 'attention' && (!su.claudeExe || !su.pwsh || !snap.sessions.length);
-  box.hidden = !show;
-  if (!show) { lastSetupSig = ''; return; }
-  const sig = JSON.stringify([su.claudeExe, su.pwsh, su.projectsRoot, su.firstRun, snap.sessions.length, (snap.accountList || []).map(a => a.signedIn)]);
-  if (sig === lastSetupSig) return;
-  lastSetupSig = sig;
-  box.textContent = '';
-  box.appendChild(Dom.h('h2', null, su.claudeExe ? 'Ready to start' : 'Claude Code was not found'));
-  const dl = Dom.h('dl', 'setup-dl');
-  const row = (k, v, ok) => { dl.appendChild(Dom.h('dt', null, k)); dl.appendChild(Dom.h('dd', ok ? 'ok' : 'bad', v)); };
-  row('Claude Code', su.claudeExe || 'not found. Install it, or point Desk at claude.exe in Settings', !!su.claudeExe);
-  row('Shell', su.pwsh || 'no PowerShell found', !!su.pwsh);
-  row('Projects', su.projectsRoot || 'no folder set. Any folder can still be added from the sidebar', !!su.projectsRoot);
-  const al = snap.accountList || [], signed = al.filter(a => a.signedIn).length;
-  row('Accounts', `${al.length} (${signed} signed in)`, signed > 0);
-  box.appendChild(dl);
-  const btns = Dom.h('div', 'btns');
-  if (su.firstRun || Welcome.isAway()) { const b0 = Dom.h('button', null, 'Continue setup'); b0.onclick = () => Welcome.resume(); btns.appendChild(b0); }
-  const b1 = Dom.h('button', null, 'Open Settings'); b1.onclick = () => showNav('settings'); btns.appendChild(b1);
-  if (su.claudeExe) { const b2 = Dom.h('button', 'primary', 'Pick a folder and start'); b2.onclick = () => desk.addProject('pc', null); btns.appendChild(b2); }
-  box.appendChild(btns);
-  box.appendChild(Dom.h('p', 'hint', 'Ctrl+K opens the command palette. Ctrl+/ shows every key.'));
+// home, the welcome page: Start, Recent and Walkthroughs on the left; what the sessions are doing and the usage on the right
+function linkRow(icon, text, note, run, cls) {
+  const r = Dom.h('button', 'lrow' + (cls ? ' ' + cls : ''));
+  r.append(svgUse(icon), Dom.h('span', 'lt-t', text));
+  if (note) r.appendChild(Dom.h('span', 'lt-n', note));
+  r.onclick = run;
+  return r;
 }
+let lastLeftSig = '';
+function renderHomeLeft() {
+  const su = snap.setup || {};
+  const al = snap.accountList || [];
+  const recent = (ui.recent || []).map(projectByKey).filter(Boolean);
+  for (const p of snap.projects) if (recent.length < 6 && !recent.includes(p) && snap.sessions.some(s => s.machine + ':' + s.project === p.key)) recent.push(p);
+  const sig = JSON.stringify([su.claudeExe, su.projectsRoot, su.firstRun, Welcome.isAway(), al.length, al.filter(a => a.signedIn).length, recent.slice(0, 6).map(p => p.key), inProject() && pname()]);
+  if (sig === lastLeftSig) return;
+  lastLeftSig = sig;
+  const start = $('#home-start'); start.textContent = '';
+  if (!su.claudeExe) start.appendChild(linkRow('i-attention', 'Claude Code was not found', 'point Desk at claude.exe', () => Settings.goTo('Paths'), 'warn'));
+  if (su.firstRun || Welcome.isAway()) start.appendChild(linkRow('i-check', 'Continue setup', 'accounts, look and context', () => Welcome.resume()));
+  const proj = inProject();
+  start.append(
+    linkRow('i-plus', 'New Claude session', proj ? `in ${pname()}  Ctrl+Shift+N` : 'pick a project first', () => proj ? newSession('claude') : openPalette('jump'), proj ? '' : 'dim'),
+    linkRow('i-terminal', 'New shell', proj ? `in ${pname()}  Ctrl+Shift+T` : 'pick a project first', () => proj ? newSession('shell') : openPalette('jump'), proj ? '' : 'dim'),
+    linkRow('i-folder-plus', 'Open folder', 'any folder on this PC', () => desk.addProject('pc', null)),
+    linkRow('i-folder', 'New project', su.projectsRoot ? `a new folder in ${su.projectsRoot}` : 'set a projects folder first', () => su.projectsRoot ? openPalette('project') : Settings.goTo('Paths'), su.projectsRoot ? '' : 'dim'),
+    linkRow('i-desk', 'New window', 'over the same sessions', () => desk.newWindow({ project: ui.current || null })),
+  );
+  const rec = $('#home-recent'); rec.textContent = '';
+  for (const p of recent.slice(0, 6)) rec.appendChild(linkRow('i-folder', p.name, (p.machine === 'laptop' ? 'laptop  ' : '') + (p.path || p.dir || ''), () => showProject(p.key)));
+  if (!recent.length) rec.appendChild(Dom.h('p', 'none', su.projectsRoot ? 'Nothing opened yet. Pick a project on the left.' : 'No projects folder is set. Open a folder, or set one in Settings.'));
+  const walk = $('#home-walk'); walk.textContent = '';
+  walk.append(
+    linkRow('i-check', 'Set up accounts', `${al.length} account${al.length === 1 ? '' : 's'}, ${al.filter(a => a.signedIn).length} signed in`, () => { snap.setup.firstRun = true; Welcome.resume(); }),
+    linkRow('i-cmd', 'Learn the keys', 'Ctrl+K, Ctrl+P and the rest on one card', () => keysPop.open(true)),
+    linkRow('i-settings', 'Choose a look', 'theme, accent, font and size', () => Settings.goTo('Appearance')),
+  );
+}
+let lastUseSig = '';
+function renderHomeUsage() {
+  const al = snap.accountList || [], acc = snap.accounts || {};
+  const sig = JSON.stringify([al.map(a => [a.id, a.name, a.signedIn]), al.map(a => acc[a.id]), snap.totals && snap.totals.pc]);
+  if (sig === lastUseSig) return;
+  lastUseSig = sig;
+  const box = $('#home-usage'); box.textContent = '';
+  for (const a of al) {
+    const u = acc[a.id];
+    const r = Dom.h('div', 'urow'); r.style.cssText = `--acc: var(--acc-${a.id}); --acc-strong: var(--acc-${a.id}-strong)`;
+    r.append(Dom.h('span', 'acc', String(a.id)), Dom.h('span', 'un', a.name));
+    const bars = Dom.h('span', 'ubars');
+    for (const [k, l] of [['five_hour', '5 h'], ['seven_day', '7 d']]) {
+      const v = u ? pct(u[k]) : null; if (v == null) continue;
+      const b = Dom.h('span', 'ubar' + (v >= 80 ? ' hot' : '')); b.title = `${l} limit ${v}% used`;
+      const i = Dom.h('i'); i.style.width = v + '%'; b.appendChild(i); bars.appendChild(b);
+    }
+    r.append(bars, Dom.h('span', 'ut', a.signedIn ? limitText(u) : 'not signed in'));
+    box.appendChild(r);
+  }
+  const m = Dom.h('p', 'umem'); m.append(Dom.h('b', null, 'PC memory '), document.createTextNode(Sidebar.fmtMem(snap.totals.pc) || 'not measured'));
+  box.appendChild(m);
+}
+$('#home-onstart').onchange = e => { ui.welcomeOnStart = e.target.checked; saveUi(); };
 
 let lastHomeSig = '';
 function renderHome() {
   if ($('#home').hidden) return;
-  renderSetupCard();
   const nav = ui.nav;
+  $('#home').classList.toggle('attn', nav === 'attention');
+  if (nav !== 'attention') { renderHomeLeft(); renderHomeUsage(); }
+  $('#home-onstart').checked = !!ui.welcomeOnStart;
   const projName = s => { const p = projectByKey(s.machine + ':' + s.project); return p ? p.name : s.project; };
   const order = { waiting: 0, failed: 1, finished: 2, working: 3, starting: 4, idle: 5, shell: 6, exited: 7, stopped: 8, elsewhere: 9, offline: 10 };
   const all = snap.sessions.map(s => ({ s, st: stateOf(s), proj: projName(s) })).sort((a, b) => ((order[a.st] || 0) - (order[b.st] || 0)) || (a.s.order - b.s.order));
@@ -208,17 +263,18 @@ function renderHome() {
     if (!rows.length) items.push({ k: 'none', t: 'none', text: 'Nothing needs you.' });
     for (const x of rows) items.push({ k: 'r:' + x.s.id, t: 'r', ...x, acc: x.s.account, colour: STATE_COLOUR[x.st] || 'idle' });
   }
-  const hr = new Date().getHours();
-  Dom.text($('#home-h1'), nav === 'attention' ? 'Needs you' : hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening');
+  if (!items.length) items.push({ k: 'none', t: 'none', text: 'No sessions yet. Start one from the left, or pick a project in the sidebar.' });
+  Dom.text($('#home-h1'), nav === 'attention' ? 'Needs you' : (snap.setup && snap.setup.appName) || 'Claude Desk');
+  Dom.text($('#home-now-h'), nav === 'attention' ? 'Waiting on you' : 'Now');
   const nproj = new Set(snap.sessions.map(s => s.machine + ':' + s.project)).size;
   const live = snap.sessions.filter(s => s.status === 'live').length;
-  Dom.text($('#home-sub'), snap.sessions.length ? `${live} live of ${snap.sessions.length} session${snap.sessions.length === 1 ? '' : 's'} across ${nproj} project${nproj === 1 ? '' : 's'}. Pick a project on the left, or a session below.` : 'No sessions yet. Pick a project on the left, then press the session button or Ctrl+Shift+N.');
+  Dom.text($('#home-sub'), snap.sessions.length ? `${live} live of ${snap.sessions.length} session${snap.sessions.length === 1 ? '' : 's'} across ${nproj} project${nproj === 1 ? '' : 's'}.` : 'Claude Code sessions and shells, side by side, across your accounts.');
   const sigOf = it => JSON.stringify([it.st, it.s && [it.s.name, it.s.label, it.s.status, it.s.glyph, it.s.account], it.proj]);
   const sig = JSON.stringify(items.map(it => [it.k, sigOf(it)]));
   if (sig === lastHomeSig) return;
   lastHomeSig = sig;
   Dom.keyed($('#home-list'), items, it => it.k, it => {
-    if (it.t === 'h') return Dom.h('h2', null, it.title);
+    if (it.t === 'h') return Dom.h('h3', null, it.title);
     if (it.t === 'none') return Dom.h('div', 'none', it.text);
     const r = Dom.h('div', 'row'); r.tabIndex = 0; r.setAttribute('role', 'button');
     r.appendChild(Dom.h('span', 'acc'));
@@ -261,14 +317,34 @@ $('#home-list').addEventListener('keydown', e => {
 
 function setNav(nav) {
   if (!NAVS.includes(nav)) return;
-  if (nav === ui.nav && (nav === 'projects' || nav === 'settings')) { toggleSidebar(); return; }
+  if (nav === ui.nav && nav === 'projects') { toggleSidebar(); return; }
+  if (nav === ui.nav && nav === 'settings') nav = 'projects';
   ui.nav = nav;
-  if (ui.sidebar.collapsed && (nav === 'projects' || nav === 'settings')) ui.sidebar.collapsed = false;
-  ui.sidebar.hidden = false;
+  if (ui.sidebar.collapsed && nav === 'projects') ui.sidebar.collapsed = false;
+  if (nav !== 'settings') ui.sidebar.hidden = false;
+  sbOver = narrow() && nav === 'projects';
   saveUi();
   renderAll();
 }
+// window width class on #app: xs under 640, s under 900, m under 1100. Under 900 the sidebar is an overlay, open only while sbOver
+let sbOver = false;
+const narrow = () => /^(s|xs)$/.test($('#app').dataset.w || '');
+function setOverlay(on) { if (sbOver === on) return; sbOver = on; renderShell(); }
+new ResizeObserver(([e]) => {
+  const w = e.contentRect.width, k = w < 640 ? 'xs' : w < 900 ? 's' : w < 1100 ? 'm' : 'l', app = $('#app');
+  if (app.dataset.w === k) return;
+  app.dataset.w = k;
+  sbOver = false;
+  if (snap) renderShell();
+}).observe($('#app'));
+document.addEventListener('mousedown', e => { if (sbOver && !e.target.closest('#sidebar, #activity')) setOverlay(false); });
+$('#sidebar-scroll').addEventListener('click', e => {
+  if (!sbOver) return;
+  const row = e.target.closest('[data-key]'), a = e.target.closest('[data-act]'), k = row ? row.dataset.key : '';
+  if (/^(p|s):/.test(k) && (!a || a.dataset.act === 'new') || k.startsWith('pk:')) setOverlay(false);
+});
 function toggleSidebar() {
+  if (narrow() && !ui.sidebar.hidden) { setOverlay(!sbOver); return; }
   if (ui.sidebar.hidden) { ui.sidebar.hidden = false; ui.sidebar.collapsed = false; }
   else ui.sidebar.collapsed = !ui.sidebar.collapsed;
   saveUi();
@@ -281,12 +357,21 @@ function togglePanel() {
   renderShell();
 }
 $('#panel-btn').addEventListener('click', togglePanel);
+$('#sb-hide').onclick = () => toggleSidebar();
+$('#sb-add').onclick = () => H.onAddProject('pc');
+$('#sb-new').onclick = () => openPalette('project');
+$('#st-proj').onclick = () => openPalette('jump');
+$('#st-acc').onclick = e => { e.stopPropagation(); accPop.open(true); };
+$('#st-count').onclick = () => showNav('home');
+$('#st-attn').onclick = () => showNav('attention');
 $('#activity').addEventListener('click', e => { const b = e.target.closest('.act'); if (b) setNav(b.dataset.nav); });
 
 // sidebar width: drag the sash, double click resets; saved once on release
+const SIDEBAR_DEF = 300;
+function resetSidebarWidth() { ui.sidebar.w = SIDEBAR_DEF; saveUi(); renderShell(); }
 (() => {
   const sash = $('#sash'), app = $('#app');
-  const MIN = 220, MAX = 480, DEF = 300;
+  const MIN = 220, MAX = 480, DEF = SIDEBAR_DEF;
   let x0 = 0, w0 = 0;
   sash.addEventListener('pointerdown', e => { if (e.button !== 0) return; sash.setPointerCapture(e.pointerId); x0 = e.clientX; w0 = ui.sidebar.w; app.classList.add('resizing'); });
   sash.addEventListener('pointermove', e => {
@@ -307,33 +392,16 @@ $('#activity').addEventListener('click', e => { const b = e.target.closest('.act
     else return;
     e.preventDefault(); saveUi(); renderShell();
   });
-  $('#sb-reset').onclick = () => { ui.sidebar.w = DEF; saveUi(); renderShell(); };
 })();
 
 // ---------- attention: desktop notifications (renderer Notification API, opt-in) ----------
 const notifyAllowed = () => typeof Notification !== 'undefined' && Notification.permission === 'granted';
-function renderAttentionSettings() {
-  $('#flash-toggle').checked = ui.flash !== false;
-  $('#notify-toggle').checked = !!ui.notify;
-  Dom.text($('#notify-note'), !ui.notify ? 'Off. The badge, the window title and the taskbar flash still work.'
-    : notifyAllowed() ? 'Sent only while Desk is in the background. Clicking one opens Needs you.'
-    : 'Windows has not allowed notifications for Desk, so none will be sent.');
-}
-$('#flash-toggle').onchange = e => { ui.flash = e.target.checked; saveUi(); };
-$('#notify-toggle').onchange = async e => {
-  ui.notify = e.target.checked;
-  if (ui.notify && !notifyAllowed() && typeof Notification !== 'undefined') await Notification.requestPermission();
-  saveUi(); renderAttentionSettings();
-};
-$('#notify-test').onclick = () => {
-  if (!notifyAllowed()) { toast('Windows has not allowed notifications for Desk', 'error'); return; }
-  new Notification((snap.setup && snap.setup.appName) || 'Claude Desk', { body: 'This is what a session needing you looks like.' });
-};
 let attnWas = null;
 function notifyTransitions() {
   const now = new Map(snap.sessions.map(s => [s.id, ATTN(s)]));
   const was = attnWas; attnWas = now;
-  if (!was || !ui.notify || document.hasFocus() || !notifyAllowed()) return;
+  // only the window used last raises the toast, so two windows never both notify
+  if (!was || !ui.notify || document.hasFocus() || snap.notifier !== myWid || !notifyAllowed()) return;
   for (const s of snap.sessions) {
     if (!now.get(s.id) || was.get(s.id) !== false) continue;
     const p = projectByKey(s.machine + ':' + s.project);
@@ -478,7 +546,7 @@ function renderTabs() {
   if (!p) { Dom.keyed(tabs, [], () => '', () => null, () => {}); lastTabSig = ''; return; }
   const v = view(ui.current);
   const sessions = snap.sessions.filter(s => s.machine === p.machine && s.project === p.dir).sort((a, b) => a.order - b.order);
-  const sig = JSON.stringify([sessions.map(s => [s.id, s.name, s.glyph, s.status, s.state, s.account]), v.slots, v.focus, v.n]);
+  const sig = JSON.stringify([sessions.map(s => [s.id, s.name, s.glyph, s.status, s.state, s.account, (awayWin(s.id) || {}).n]), v.slots, v.focus, v.n]);
   for (const b of $$('#panespop .split')) { b.classList.toggle('on', Number(b.dataset.n) === v.n); b.setAttribute('aria-checked', Number(b.dataset.n) === v.n ? 'true' : 'false'); }
   Dom.text($('#panes-n'), `${v.n} pane${v.n === 1 ? '' : 's'}`);
   if (sig === lastTabSig) return;
@@ -486,7 +554,8 @@ function renderTabs() {
   const items = sessions.map(s => {
     const idx = v.slots.indexOf(s.id);
     const placed = idx >= 0 && idx < v.n;
-    return { s, placed, focused: placed && idx === v.focus, slotno: placed && v.n > 1 ? String(idx + 1) : '', colour: (accInfo(s.account) || {}).colour || snap.colours[s.account] || snap.colours[0] };
+    const away = awayWin(s.id);
+    return { s, placed, away: away ? away.n : 0, focused: placed && idx === v.focus, slotno: placed && v.n > 1 ? String(idx + 1) : away ? `w${away.n}` : '', colour: (accInfo(s.account) || {}).colour || snap.colours[s.account] || snap.colours[0] };
   });
   Dom.keyed(tabs, items, it => it.s.id, () => {
     const t = document.createElement('div');
@@ -501,14 +570,16 @@ function renderTabs() {
   }, (t, it) => {
     const [dot, glyph, name, slotno] = t.children;
     t.classList.toggle('placed', it.placed);
+    t.classList.toggle('away', !!it.away);
+    Dom.attr(t, 'title', it.away ? `${it.s.name} is shown in ${it.away === 1 ? 'the main window' : 'window ' + it.away}. Click to go there, drag it to a pane to move it here` : null);
     t.classList.toggle('focused', it.focused);
     if (dot.style.background !== it.colour) dot.style.background = it.colour;
     Sidebar.setGlyph(glyph, Sidebar.glyphOf(it.s));
     Dom.text(name, it.s.name);
     slotno.hidden = !it.slotno; Dom.text(slotno, it.slotno);
     Dom.attr(t, 'aria-selected', it.focused ? 'true' : 'false'); t.tabIndex = it.focused ? 0 : -1;
-    Dom.attr(t, 'aria-label', `${it.s.name}, ${STATE_WORD[stateOf(it.s)] || stateOf(it.s)}${it.placed ? (it.slotno ? `, pane ${it.slotno}` : ', shown') : ''}`);
-  }, { sig: it => JSON.stringify([it.s.name, it.s.glyph, it.s.status, it.s.state, it.placed, it.focused, it.slotno, it.colour]) });
+    Dom.attr(t, 'aria-label', `${it.s.name}, ${STATE_WORD[stateOf(it.s)] || stateOf(it.s)}${it.placed ? (it.slotno ? `, pane ${it.slotno}` : ', shown') : it.away ? `, in window ${it.away}` : ''}`);
+  }, { sig: it => JSON.stringify([it.s.name, it.s.glyph, it.s.status, it.s.state, it.placed, it.away, it.focused, it.slotno, it.colour]) });
   if (!items.some(it => it.focused)) { const first = tabs.querySelector('.tab'); if (first) first.tabIndex = 0; }
   const f = items.find(it => it.focused);
   if (f) revealTab(f.s.id);
@@ -552,8 +623,8 @@ function renderTabPop(items) {
     setAccChip(r.firstChild, it.s.account);
     Dom.text(r.children[1].firstChild, it.s.name);
     Dom.text(r.children[1].lastChild, STATE_WORD[stateOf(it.s)] || stateOf(it.s));
-    Dom.text(r.lastChild, it.placed ? (it.slotno ? `pane ${it.slotno}` : 'shown') : '');
-  }, { sig: it => JSON.stringify([it.s.name, it.s.account, it.placed, it.slotno, stateOf(it.s)]) });
+    Dom.text(r.lastChild, it.placed ? (it.slotno ? `pane ${it.slotno}` : 'shown') : it.away ? `in window ${it.away}` : '');
+  }, { sig: it => JSON.stringify([it.s.name, it.s.account, it.placed, it.away, it.slotno, stateOf(it.s)]) });
 }
 // a popover under a tab bar button: Esc, a click outside and a pick close it; focus lands on the first marked row
 function popover(popSel, btnSel, onOpen) {
@@ -564,7 +635,13 @@ function popover(popSel, btnSel, onOpen) {
       if (open === !pop.hidden) return;
       pop.hidden = !open;
       btn.classList.toggle('on', open);
-      if (open) { onOpen(); const r = pop.querySelector('.row.on') || pop.querySelector('.row'); if (r) r.focus(); }
+      if (open) {
+        onOpen();
+        const bar = $('#tabbar').getBoundingClientRect(), b = btn.getBoundingClientRect(), z = rz('top');
+        const right = Math.max(4, (bar.right - b.right) / z), w = pop.offsetWidth;
+        pop.style.right = Math.min(right, Math.max(4, (bar.width / z) - w - 4)) + 'px';
+        const r = pop.querySelector('.row.on') || pop.querySelector('.row'); if (r) r.focus();
+      }
       else if (document.activeElement && pop.contains(document.activeElement)) btn.focus();
     },
   };
@@ -577,17 +654,12 @@ function popover(popSel, btnSel, onOpen) {
 const POPS = [];
 accPop = popover('#accpop', '#accbtn', () => { lastAccSig = ''; renderAccount(); });
 const tabPop = popover('#tabpop', '#tabmenu-btn', () => { lastTabPopSig = ''; lastTabSig = ''; renderTabs(); });
-// the panes menu hangs under its button; the bar it sits in may be zoomed, so the offset is in the bar's own pixels
 const panesPop = popover('#panespop', '#panes-btn', () => {
-  const bar = $('#tabbar').getBoundingClientRect(), b = $('#panes-btn').getBoundingClientRect();
-  $('#panespop').style.right = Math.max(4, (bar.right - b.right) / rz('top')) + 'px';
   lastTabSig = ''; renderTabs();
 });
 $('#panespop').addEventListener('click', e => { const r = e.target.closest('.split'); if (!r) return; panesPop.open(false); setSplit(Number(r.dataset.n)); });
 // + session asks which account; the one the chip shows is marked, so Enter keeps it
 const newPop = popover('#newpop', '#new-session', () => {
-  const bar = $('#tabbar').getBoundingClientRect(), b = $('#new-session').getBoundingClientRect();
-  $('#newpop').style.right = Math.max(4, (bar.right - b.right) / rz('top')) + 'px';
   fillAccRows($('#newpop .rows'), accountsFor(currentProject()), currentAccount());
 });
 $('#newpop').addEventListener('click', e => { const r = e.target.closest('.row'); if (!r || !r.dataset.n) return; newPop.open(false); newSession('claude', Number(r.dataset.n)); });
@@ -605,7 +677,13 @@ const paneMenu = (() => {
     const v = view(ui.current), s = sessionById(v.slots[i]);
     const rows = Dom.h('div', 'rows');
     el.replaceChildren(Dom.h('div', 'caps', `New Claude session in pane ${i + 1}`), rows, Dom.h('div', 'line'), act('shell', 'i-terminal', 'New shell in this pane'));
-    if (s) el.appendChild(act('empty', 'i-minus', 'Take the session out', 'it keeps running as a tab'));
+    if (s) {
+      el.appendChild(act('empty', 'i-minus', 'Take the session out', 'it keeps running as a tab'));
+      el.appendChild(act('out', 'i-popout', 'Move to a new window', 'Ctrl+Shift+M'));
+      for (const w of (snap.windows || []).filter(w => w.wid !== myWid)) { const r = act('to', 'i-popout', w.n === 1 ? 'Move back to the main window' : `Move to window ${w.n}`, (projectByKey(w.current) || {}).name || ''); r.dataset.wid = w.wid; el.appendChild(r); }
+    }
+    if (v.n < MAXP) el.appendChild(act('split', 'i-split', 'Split: one more pane', `${v.n} panes to ${v.n + 1}`));
+    if (v.n > 1 || v.restore) el.appendChild(act('max', v.n > 1 ? 'i-max' : 'i-restore', v.n > 1 ? 'Maximise this pane' : 'Restore the panes', v.n > 1 ? 'the others keep running as tabs' : `back to ${v.restore.n}`));
     if (v.n > 1) el.appendChild(act('close', 'i-x', 'Close pane', `${v.n} panes to ${v.n - 1}`));
     fillAccRows(rows, accountsFor(currentProject()), currentAccount());
   }
@@ -627,7 +705,7 @@ const paneMenu = (() => {
     if (r.dataset.n) newSession('claude', Number(r.dataset.n), i);
     else if (r.dataset.act === 'shell') newSession('shell', 0, i);
     else if (r.dataset.act === 'empty') emptyPane(i);
-    else if (r.dataset.act === 'close') closePane(i);
+    else paneAct(r.dataset.act, i, r.dataset.wid);
   });
   document.addEventListener('mousedown', e => { if (api.isOpen() && !el.contains(e.target)) api.open(false); });
   window.addEventListener('blur', () => api.open(false));
@@ -647,7 +725,7 @@ $('#tabpop').addEventListener('click', e => {
   tabPop.open(false); placeInFocused(r.dataset.key);
 });
 const tabOf = e => { const t = e.target.closest('.tab'); return t && !Dom.isLeaving(t) ? t.dataset.key : null; };
-$('#tabs').addEventListener('click', e => { const id = tabOf(e); if (id) placeInFocused(id); });
+$('#tabs').addEventListener('click', e => { const id = tabOf(e); if (!id) return; const w = awayWin(id); if (w) desk.focusWindow(w.wid); else placeInFocused(id); });
 $('#tabs').addEventListener('keydown', e => {
   const t = e.target.closest('.tab'); if (!t) return;
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); t.click(); return; }
@@ -655,6 +733,42 @@ $('#tabs').addEventListener('keydown', e => {
   const all = [...$('#tabs').querySelectorAll('.tab')].filter(x => !Dom.isLeaving(x));
   const n = d ? all[all.indexOf(t) + d] : e.key === 'Home' ? all[0] : e.key === 'End' ? all[all.length - 1] : null;
   if (n) { e.preventDefault(); for (const x of all) x.tabIndex = x === n ? 0 : -1; n.focus(); revealTab(n.dataset.key); }
+});
+// right click on a tab, or on the bar around the tabs: start sessions here, or send this one somewhere else
+// where a session can go from here: a new window, or another open one ("back to the main window" from a popped out one)
+function moveRows(id) {
+  const away = awayWin(id), rows = [];
+  if (away) rows.push({ label: 'Move &here', run: () => placeInFocused(id) });
+  else rows.push({ label: 'Move to a new &window', key: 'Ctrl+Shift+M', run: () => desk.moveSession(id, 'new') });
+  const to = (snap.windows || []).filter(w => w.wid !== myWid && w.wid !== (away || {}).wid);
+  const main = to.find(w => w.n === 1), rest = to.filter(w => w.n !== 1);
+  if (main) rows.push({ label: 'Move &back to the main window', run: () => desk.moveSession(id, main.wid) });
+  if (rest.length) rows.push({ label: 'Move &to window', sub: () => rest.map(w => ({ label: `&${w.n}  ${(projectByKey(w.current) || {}).name || 'no project'}`, run: () => desk.moveSession(id, w.wid) })) });
+  return rows;
+}
+function newSessionRows() {
+  const accs = accountsFor(currentProject());
+  const rows = [{ label: 'New Claude &session', key: 'Ctrl+Shift+N', when: inProject, run: () => newSession('claude') }];
+  if (accs.length > 1) rows.push({ label: 'New Claude session &as', when: inProject, sub: () => accs.map(n => ({ label: accName(n), check: () => n === currentAccount(), run: () => newSession('claude', n) })) });
+  rows.push({ label: 'New s&hell', key: 'Ctrl+Shift+T', when: inProject, run: () => newSession('shell') });
+  return rows;
+}
+$('#tabbar').addEventListener('contextmenu', e => {
+  if (!ui.current || !window.Menubar || e.target.closest('.pop, #tab-actions button')) return;
+  e.preventDefault();
+  const id = tabOf(e), s = id && sessionById(id), v = view(ui.current);
+  const rows = [];
+  if (s) {
+    const away = awayWin(id);
+    if (away) rows.push({ label: '&Go to its window', run: () => desk.focusWindow(away.wid) });
+    else {
+      rows.push({ label: '&Show in the focused pane', run: () => placeInFocused(id) });
+      if (v.n > 1) rows.push({ label: 'Show in &pane', sub: () => Array.from({ length: v.n }, (_, i) => ({ label: `&${i + 1}`, check: () => v.slots[i] === id, run: () => placeInSlot(id, i) })) });
+    }
+    rows.push(...moveRows(id), '-');
+  }
+  rows.push(...newSessionRows());
+  Menubar.popup(rows, e.clientX, e.clientY);
 });
 $('#tabs').addEventListener('dragstart', e => { const id = tabOf(e); if (!id) return; dragId = id; e.target.closest('.tab').classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
 $('#tabs').addEventListener('dragend', e => { dragId = null; const t = e.target.closest('.tab'); if (t) t.classList.remove('dragging'); });
@@ -817,8 +931,40 @@ function slotHead() {
     const z = Number(b.dataset.z);
     if (z) paneStep(id, z); else setPaneSize(id, null);
   });
-  h.appendChild(pz);
+  const pa = Dom.h('span', 'pa'); pa.setAttribute('role', 'group'); pa.setAttribute('aria-label', 'Pane');
+  pa.append(btn('split', null, 'Split: one more pane', 'i-split'), btn('max', 'mx', 'Maximise this pane', 'i-max'),
+    btn('out', null, 'Move to a new window (Ctrl+Shift+M)', 'i-popout'), btn('close', null, 'Close this pane', 'i-x'));
+  pa.addEventListener('click', e => {
+    const b = e.target.closest('button'), slot = h.parentElement;
+    if (b && slot) paneAct(b.dataset.z, Number(slot.dataset.i));
+  });
+  h.append(pz, pa);
   return h;
+}
+// the pane head buttons and the pane menu share these
+function paneAct(a, i, wid) {
+  const v = view(ui.current), id = v.slots[i];
+  if (a === 'split') { if (v.n < MAXP) { setSplit(v.n + 1); focusSlot(v.n - 1); } }
+  else if (a === 'max') toggleMax(i);
+  else if (a === 'out') { if (id) desk.moveSession(id, 'new'); }
+  else if (a === 'to') { if (id) desk.moveSession(id, Number(wid)); }
+  else if (a === 'close') closePane(i);
+}
+// one pane fills the area; the same button puts the old layout back, with this session where it was
+function toggleMax(i) {
+  const v = view(ui.current);
+  if (v.n === 1 && v.restore) {
+    const r = v.restore, id = v.slots[0];
+    v.restore = null; v.slots = r.slots.slice(); v.n = r.n; v.focus = r.focus;
+    if (id && !v.slots.slice(0, v.n).includes(id)) v.slots[v.focus] = id;
+  } else if (v.n > 1) {
+    const id = v.slots[i];
+    v.restore = { n: v.n, slots: v.slots.slice(), focus: i };
+    v.slots = [id, ...v.slots.filter(x => x !== id)].concat(EMPTY()).slice(0, MAXP);
+    v.n = 1; v.focus = 0;
+  } else return;
+  saveUi(); renderSlots(); renderTabs(); renderSidebar(true);
+  if (v.slots[v.focus]) Terminals.focus(v.slots[v.focus]);
 }
 function renderPaneHeads() {
   if (!ui.current) return;
@@ -826,7 +972,14 @@ function renderPaneHeads() {
     const h = slot.querySelector(':scope > .slot-head'); if (!h) continue;
     const s = sessionById(slot.dataset.sid);
     h.hidden = !s; if (!s) continue;
-    const [dot, nm, lb, pz] = h.children, st = stateOf(s), word = STATE_WORD[st] || st;
+    const [dot, nm, lb, pz, pa] = h.children, st = stateOf(s), word = STATE_WORD[st] || st;
+    const v = view(ui.current), maxed = v.n === 1 && !!v.restore, mx = pa.children[1];
+    pa.children[0].hidden = v.n >= MAXP;
+    mx.hidden = v.n === 1 && !maxed;
+    pa.children[3].hidden = v.n < 2;
+    const mt = maxed ? `Restore the ${v.restore.n} panes` : 'Maximise this pane';
+    if (mx.title !== mt) { mx.title = mt; mx.setAttribute('aria-label', mt); mx.firstChild.firstChild.setAttribute('href', maxed ? '#i-restore' : '#i-max'); }
+    pa.classList.toggle('on', maxed);
     const col = `var(--st-${STATE_COLOUR[st] || 'idle'})`;
     if (dot.style.getPropertyValue('--st') !== col) dot.style.setProperty('--st', col);
     Dom.text(nm, s.name);
@@ -858,6 +1011,7 @@ function renderProjbar() {
 
 function showProject(key) {
   ui.current = key;
+  if (key) ui.recent = [key, ...(ui.recent || []).filter(k => k !== key)].slice(0, 10);
   if (key) ui.nav = 'projects';
   saveUi();
   renderAll();
@@ -913,6 +1067,7 @@ const KEYMAP = [
   { code: 'KeyP', shift: false, run: () => openPalette('jump') },
   { code: 'KeyN', shift: true, run: () => { if (ui.current) newSession('claude'); } },
   { code: 'KeyT', shift: true, run: () => { if (ui.current) newSession('shell'); } },
+  { code: 'KeyM', shift: true, run: () => { const id = focusedId(); if (id) desk.moveSession(id, 'new'); } },
   { code: 'Comma', shift: false, run: () => showNav('settings') },
   { code: 'Slash', shift: false, run: () => toggleKeys() },
   { code: /^(Equal|NumpadAdd)$/, shift: false, run: () => zoomKey(1) },
@@ -923,8 +1078,9 @@ const KEYMAP = [
   { code: /^(Digit0|Numpad0)$/, shift: true, run: () => setScale(1) },
 ];
 window.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { const p = POPS.find(p => p.isOpen()); if (p) { p.open(false); e.preventDefault(); } else clearToasts(); return; }
+  if (e.key === 'Escape') { const p = POPS.find(p => p.isOpen()); if (p) { p.open(false); e.preventDefault(); } else if (sbOver) setOverlay(false); else clearToasts(); return; }
   if (e.key === 'F1' && !e.ctrlKey && !e.altKey) { e.preventDefault(); toggleKeys(); return; }
+  if (e.key === 'F11' && !e.ctrlKey && !e.altKey && !e.shiftKey) { e.preventDefault(); desk.fullScreen(); return; }
   if (!e.ctrlKey || e.altKey || e.metaKey) return;
   const m = KEYMAP.find(k => (k.code instanceof RegExp ? k.code.test(e.code) : k.code === e.code) && k.shift === e.shiftKey);
   if (!m) return;
@@ -1062,15 +1218,12 @@ $('#zoom-in').onclick = () => zoomStep(1);
 $('#zoom-out').onclick = () => zoomStep(-1);
 $('#zoom-val').onclick = () => setScale(1);
 $('#zoom-all').onclick = resetAllZoom;
-$('#zoom-all-set').onclick = resetAllZoom;
 function setTermFont(n) {
   if (!TSIZES.includes(n)) n = 14;
   ui.termFont = n; saveUi();
   Terminals.setFontSize(n);
   renderShell(); renderPaneHeads();
 }
-$('#scale-seg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setScale(Number(b.dataset.scale)); });
-$('#tfont-seg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setTermFont(Number(b.dataset.font)); });
 
 // the keys card: the same list as in Settings, shown over the window on Ctrl+/ or F1
 let keysBack = null;
@@ -1081,7 +1234,7 @@ const keysPop = {
     if (o) {
       for (const p of POPS) if (p !== keysPop && p.isOpen()) p.open(false);
       if (!el.hidden) return;
-      const body = $('#keys-body'); if (!body.children.length) body.appendChild($('#keys-dl').cloneNode(true)).removeAttribute('id');
+      const body = $('#keys-body'); if (!body.children.length) body.appendChild(keysList());
       keysBack = document.activeElement; el.hidden = false; $('#keys-close').focus();
     } else {
       if (el.hidden) return;
@@ -1096,40 +1249,12 @@ POPS.push(keysPop);
 function toggleKeys() { keysPop.open(!keysPop.isOpen()); }
 $('#keys-btn').onclick = () => keysPop.open(true);
 $('#cmd-btn').onclick = () => openPalette('commands');
-$('#keys-show').onclick = () => keysPop.open(true);
 $('#keys-close').onclick = () => keysPop.open(false);
 $('#keys').addEventListener('mousedown', e => { if (e.target === e.currentTarget) keysPop.open(false); });
 $('#keys').addEventListener('keydown', e => { if (e.key === 'Tab') e.preventDefault(); });
 
-// settings: setup block, from snap.setup; a path set by a DESK_* variable cannot be changed here
-function renderSetup() {
-  const su = snap && snap.setup; if (!su) return;
-  const put = (id, btn, val, missing, env, name) => {
-    Dom.text($(id), val ? val + (env ? ` (from ${name})` : '') : missing);
-    $(id).classList.toggle('bad', !val);
-    const b = $(btn); if (b) { b.disabled = !!env; Dom.attr(b, 'title', env ? `${name} is set, so this cannot be changed here` : null); }
-  };
-  put('#set-projects', '#set-projects-btn', su.projectsRoot, 'not set', su.env.projects, 'DESK_PROJECTS');
-  put('#set-claude', '#set-claude-btn', su.claudeExe, 'not found', su.env.claude, 'DESK_CLAUDE');
-  put('#set-pwsh', '#set-pwsh-btn', su.pwsh, 'not found', su.env.pwsh, 'DESK_PWSH');
-  if (typeof AccountsUI !== 'undefined') { AccountsUI.render($('#acc-list')); renderContext(); renderLook(); }
-  for (const b of $('#resume-seg').children) b.classList.toggle('on', b.dataset.resume === (su.resume || 'current'));
-  for (const b of $('#gpu-seg').children) b.classList.toggle('on', b.dataset.gpu === (su.gpu || 'on'));
-  const st = su.start;
-  Dom.text($('#resume-note'), st ? `This start: ${st.started} of ${st.saved} saved PC session${st.saved === 1 ? '' : 's'} started, ${st.waiting} waiting with Resume. A change applies at the next start.` : '');
-}
-$('#resume-seg').addEventListener('click', async e => {
-  const b = e.target.closest('button'); if (!b) return;
-  snap = Object.assign(snap || {}, { setup: (await desk.setSettings({ resume: b.dataset.resume })).setup });
-  renderSetup();
-  toast(b.dataset.resume === 'all' ? 'Every saved session starts with Desk from the next start' : b.dataset.resume === 'none' ? 'No saved session starts with Desk from the next start' : 'Only the open panes start with Desk from the next start');
-});
-$('#gpu-seg').addEventListener('click', async e => {
-  const b = e.target.closest('button'); if (!b) return;
-  snap = Object.assign(snap || {}, { setup: (await desk.setSettings({ gpu: b.dataset.gpu })).setup });
-  renderSetup();
-  toast(b.dataset.gpu === 'off' ? 'Software painting from the next start' : 'GPU painting from the next start');
-});
+// Settings refreshes itself from snap.setup; kept under this name for the callers in setup.js
+function renderSetup() { if (typeof Settings !== 'undefined') Settings.refresh(); }
 async function changePath(what, key, from, msg) {
   const p = await desk.pickPath(what, from || undefined);
   if (!p) return;
@@ -1137,13 +1262,6 @@ async function changePath(what, key, from, msg) {
   renderSetup(); renderHome();
   toast(msg);
 }
-$('#set-projects-btn').onclick = () => changePath('folder', 'projectsRoot', snap.setup && snap.setup.projectsRoot, 'Projects folder set');
-$('#set-claude-btn').onclick = () => changePath('file', 'claudeExe', null, 'Claude Code path set. New sessions use it');
-$('#set-pwsh-btn').onclick = () => changePath('file', 'pwsh', null, 'Shell path set. New shells use it');
-$('#open-state').onclick = () => desk.openPath('state');
-$('#acc-add').onclick = () => AccountsUI.add();
-$('#acc-setup').onclick = () => { snap.setup.firstRun = true; Welcome.resume(); };
-$('#open-log').onclick = () => desk.openPath('log');
 function focusPane(i) {
   if (!ui.current) return;
   const v = view(ui.current);
@@ -1166,7 +1284,7 @@ function cycleTab(dir) {
 
 function setSplit(n) {
   const v = view(ui.current);
-  v.n = n;
+  v.n = n; v.restore = null;
   if (v.focus >= n) v.focus = n - 1;
   saveUi();
   renderSlots(); renderTabs(); renderSidebar(true);
@@ -1214,7 +1332,7 @@ const PAL = { mode: null, items: [], sel: 0, back: null, sayTo: new Set() };
 // projects with at least one Claude session, so a say could reach something
 const claudeProjects = () => snap ? snap.projects.filter(p => snap.sessions.some(s => s.machine === p.machine && s.project === p.dir && s.kind !== 'shell')) : [];
 const pname = () => { const p = currentProject(); return p ? p.name : 'this project'; };
-function showNav(n) { if (ui.nav !== n) setNav(n); else if ((ui.sidebar.collapsed || ui.sidebar.hidden) && (n === 'projects' || n === 'settings')) toggleSidebar(); }
+function showNav(n) { if (ui.nav !== n) setNav(n); else if (n === 'settings') Settings.focusSearch(); else if ((ui.sidebar.collapsed || ui.sidebar.hidden) && n === 'projects') toggleSidebar(); }
 function setTheme(t) { ui.theme = t; saveUi(); applyTheme(); renderShell(); }
 const inProject = () => !!currentProject();
 const COMMANDS = [
@@ -1222,6 +1340,13 @@ const COMMANDS = [
   { id: 'new', name: 'New Claude session', key: 'Ctrl+Shift+N', sub: () => `as ${accName(currentAccount())} in ${pname()}`, when: inProject, run: () => newSession('claude') },
   { id: 'shell', name: 'New shell', key: 'Ctrl+Shift+T', sub: () => `a plain terminal in ${pname()}`, when: inProject, run: () => newSession('shell') },
   { id: 'addpc', name: 'Add a folder', sub: 'pick any folder on this PC to work in', run: () => desk.addProject('pc', null) },
+  { id: 'proj-new', name: 'New project', sub: () => `a new folder in ${(snap && snap.setup && snap.setup.projectsRoot) || 'the projects folder'}`, when: () => !!(snap && snap.setup && snap.setup.projectsRoot), run: () => openPalette('project') },
+  { id: 'win-new', name: 'New window', sub: 'another Desk window over the same sessions', run: () => desk.newWindow({ project: ui.current || null }) },
+  { id: 'pane-new-win', name: 'Move this pane to a new window', sub: 'the session keeps running there', key: 'Ctrl+Shift+M', when: focusedId, run: () => desk.moveSession(focusedId(), 'new') },
+  { id: 'win-close', name: 'Close this window', sub: () => snap && snap.windows && snap.windows.length > 1 ? 'its sessions keep running' : 'the last window: this quits Desk', run: () => desk.closeWindow() },
+  { id: 'quit', name: 'Exit', sub: 'stops every session and closes every window', run: () => desk.quit() },
+  { id: 'statusbar', name: () => ui.statusHidden ? 'Show the status bar' : 'Hide the status bar', run: () => { ui.statusHidden = !ui.statusHidden; saveUi(); renderShell(); } },
+  { id: 'fullscreen', name: 'Full screen', key: 'F11', run: () => desk.fullScreen() },
   { id: 'addlaptop', name: 'Add a laptop folder', sub: 'type its path', when: () => !!(snap && snap.laptop && snap.laptop.status === 'online'), run: () => openPalette('folder') },
   ...['One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight'].map((w, i) => ({ id: 'split' + (i + 1), name: `${w} pane${i ? 's' : ''}`, key: `Ctrl+Shift+${i + 1}`, when: inProject, run: () => setSplit(i + 1) })),
   { id: 'sidebar', name: () => ui.sidebar.collapsed ? 'Show the sidebar' : 'Hide the sidebar', key: 'Ctrl+B', run: () => toggleSidebar() },
@@ -1247,7 +1372,7 @@ const COMMANDS = [
   { id: 'flash', name: () => ui.flash !== false ? 'Taskbar flash: turn off' : 'Taskbar flash: turn on', run: () => { ui.flash = ui.flash === false; saveUi(); renderShell(); } },
   { id: 'mem-now', name: 'Sample memory now', run: () => $('#mem-now').click() },
   { id: 'mem', name: () => ui.showMem ? 'Hide memory per session' : 'Show memory per session', run: () => $('#mem-toggle').click() },
-  { id: 'sb-reset', name: 'Reset sidebar width', run: () => $('#sb-reset').click() },
+  { id: 'sb-reset', name: 'Reset sidebar width', run: resetSidebarWidth },
 ];
 const val = v => typeof v === 'function' ? v() : (v || '');
 // subsequence match, case blind; a run of consecutive hits and a hit at a word start score higher, a long gap lower
@@ -1276,7 +1401,7 @@ function markText(el, text, idx) {
 const sayWhy = s => s.status !== 'live' ? s.status : (s.state === 'working' || s.state === 'waiting') ? s.state : '';
 function palItems(mode) {
   const bySession = s => { const p = projectByKey(s.machine + ':' + s.project); return { p, name: p ? p.name : s.project }; };
-  if (mode === 'folder') return [];
+  if (mode === 'folder' || mode === 'project') return [];
   if (mode === 'say') {
     const projs = claudeProjects(), items = [];
     if (projs.length > 1) items.push({ k: 'sa', kind: 'sayall', name: 'All projects', sub: `${projs.length} projects have Claude sessions`, on: projs.every(p => PAL.sayTo.has(p.key)), hay: '' });
@@ -1302,15 +1427,16 @@ function palItems(mode) {
   return mode === 'commands' ? cmds.concat(projs, sess) : sess.concat(projs);
 }
 const svgUse = id => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('class', 'g'); const u = document.createElementNS('http://www.w3.org/2000/svg', 'use'); u.setAttribute('href', '#' + id); s.appendChild(u); return s; };
-function palMode() { const raw = $('#pal-input').value; return PAL.mode === 'say' || PAL.mode === 'folder' ? PAL.mode : raw.startsWith('>') ? 'commands' : PAL.mode; }
+const TYPED = m => m === 'say' || m === 'folder' || m === 'project';
+function palMode() { const raw = $('#pal-input').value; return TYPED(PAL.mode) ? PAL.mode : raw.startsWith('>') ? 'commands' : PAL.mode; }
 function renderPalette() {
   const pal = $('#palette');
   if (pal.hidden) return;
   const mode = palMode();
-  const q = mode === 'say' || mode === 'folder' ? '' : $('#pal-input').value.replace(/^>/, '').trim();
+  const q = TYPED(mode) ? '' : $('#pal-input').value.replace(/^>/, '').trim();
   let items = palItems(mode);
   if (q) items = items.map((it, i) => ({ it, m: fuzzy(it.hay, q), i })).filter(x => x.m).sort((x, y) => (y.m.score - x.m.score) || (x.i - y.i)).map(x => Object.assign(x.it, { idx: x.m.idx }));
-  if (!items.length) items = [{ k: 'none', kind: 'none', name: mode === 'say' ? 'No Claude session in any project. Start one with the session button.' : mode === 'folder' ? 'Type the absolute path of a folder on the laptop, then press Enter' : 'Nothing matches' }];
+  if (!items.length) items = [{ k: 'none', kind: 'none', name: mode === 'say' ? 'No Claude session in any project. Start one with the session button.' : mode === 'folder' ? 'Type the absolute path of a folder on the laptop, then press Enter' : mode === 'project' ? `A new folder in ${(snap.setup && snap.setup.projectsRoot) || 'the projects folder'}` : 'Nothing matches' }];
   PAL.items = items;
   PAL.sel = Math.min(PAL.sel, items.length - 1);
   const list = $('#pal-list');
@@ -1341,6 +1467,7 @@ function renderPalette() {
   const foot = $('#pal-foot'); foot.textContent = '';
   const add = (txt, cls) => foot.appendChild(Dom.h('span', cls, txt));
   if (mode === 'folder') { add('Enter adds the folder'); add('Esc closes'); }
+  else if (mode === 'project') { if (PAL.err) add(PAL.err, 'warn'); else add('Enter makes the folder and opens it'); add('Esc closes'); }
   else if (mode === 'say') {
     const ticked = items.filter(it => it.kind === 'sayproj' && it.on).length;
     const n = items.filter(it => it.will).length, m = items.filter(it => it.kind === 'say').length;
@@ -1368,9 +1495,9 @@ function openPalette(mode) {
   }
   if (pal.hidden) { PAL.back = document.activeElement; pal.hidden = false; inp.value = ''; }
   else if (PAL.mode !== mode) inp.value = '';
-  PAL.mode = mode; PAL.sel = 0;
-  Dom.text($('#pal-mode'), mode === 'say' ? 'Say' : mode === 'jump' ? 'Go to' : mode === 'folder' ? 'Add folder' : 'Command');
-  inp.placeholder = mode === 'say' ? 'Message for the idle Claude sessions in the ticked projects' : mode === 'jump' ? 'Session or project name' : mode === 'folder' ? '/home/you/project' : 'Command, project or session';
+  PAL.mode = mode; PAL.sel = 0; PAL.err = '';
+  Dom.text($('#pal-mode'), mode === 'say' ? 'Say' : mode === 'jump' ? 'Go to' : mode === 'folder' ? 'Add folder' : mode === 'project' ? 'New project' : 'Command');
+  inp.placeholder = mode === 'say' ? 'Message for the idle Claude sessions in the ticked projects' : mode === 'jump' ? 'Session or project name' : mode === 'folder' ? '/home/you/project' : mode === 'project' ? 'Folder name' : 'Command, project or session';
   renderPalette();
   inp.focus();
 }
@@ -1392,10 +1519,18 @@ function palMove(d) {
 function palRun() {
   if (palMode() === 'say') { sendSay(); return; }
   if (palMode() === 'folder') { addLaptopFolder(); return; }
+  if (palMode() === 'project') { makeProject(); return; }
   const it = PAL.items[PAL.sel];
   if (!it || !it.run) return;
   closePalette();
   it.run();
+}
+async function makeProject() {
+  const r = await desk.newProject($('#pal-input').value);
+  if (r && r.error) { PAL.err = r.error; renderPalette(); return; }
+  closePalette();
+  // the snapshot that lists the new folder may land after this reply; showProject only needs the key
+  if (r && r.key) showProject(r.key);
 }
 async function addLaptopFolder() {
   const dir = $('#pal-input').value.trim();
@@ -1424,7 +1559,7 @@ async function sendSay() {
   if (r.sent.length) toast(`Said to ${r.sent.join(', ')}` + (skipped ? `. Skipped ${skipped}` : ''));
   else toast('Nothing sent' + (skipped ? `: skipped ${skipped}` : ''), 'error');
 }
-$('#pal-input').addEventListener('input', () => { PAL.sel = 0; renderPalette(); });
+$('#pal-input').addEventListener('input', () => { PAL.sel = 0; PAL.err = ''; renderPalette(); });
 $('#pal-input').addEventListener('keydown', e => {
   if (e.key === 'ArrowDown') { e.preventDefault(); palMove(1); }
   else if (e.key === 'ArrowUp') { e.preventDefault(); palMove(-1); }
@@ -1443,9 +1578,11 @@ $('#say-btn').onclick = () => openPalette('say');
 // ---------- wiring ----------
 async function init() {
   snap = await desk.init();
+  myWid = snap.wid;
   ui = Object.assign({ current: null, views: {}, expanded: {}, lastAccount: {}, nav: 'projects', theme: '', sidebar: null, zoom: {}, termZoom: {} }, snap.ui || {});
   ui.views = ui.views || {}; ui.expanded = ui.expanded || {}; ui.lastAccount = ui.lastAccount || {}; ui.picker = ui.picker || {}; ui.showMem = !!ui.showMem;
   ui.flash = ui.flash !== false; ui.notify = !!ui.notify;
+  if (ui.welcomeOnStart && !(snap.windows && snap.windows.length > 1)) ui.nav = 'home';
   ui.sidebar = Object.assign({ w: 300, collapsed: false, hidden: false }, ui.sidebar || {});
   ui.sidebar.w = Math.min(480, Math.max(220, Number(ui.sidebar.w) || 300));
   ui.uiScale = nearestScale(Number(ui.uiScale) || 1);
@@ -1480,7 +1617,34 @@ desk.onSnapshot(s => {
   notifyTransitions();
   Welcome.check();
 });
+desk.onTick(now => { if (snap) snap.now = now; });
 desk.onData((id, d) => Terminals.write(id, d));
+// another window took this session: its pane here empties and its xterm goes, so nothing keeps parsing for nobody
+desk.onReleased(id => {
+  let changed = false;
+  for (const v of Object.values(ui.views)) if (v && v.slots) v.slots = v.slots.map(x => { if (x === id) { changed = true; return null; } return x; });
+  Terminals.dispose(id);
+  if (changed) { saveUi(); renderSlots(); renderTabs(); renderSidebar(true); }
+});
+// a session moved here from another window
+desk.onPlace(id => {
+  const s = sessionById(id); if (!s) return;
+  const k = s.machine + ':' + s.project;
+  if (ui.current !== k) showProject(k);
+  const v = view(ui.current);
+  const free = v.slots.slice(0, v.n).indexOf(null);
+  placeInSlot(id, free >= 0 ? free : v.focus);
+});
+// a preference set in another window: same theme, fonts and colours everywhere
+desk.onPrefs(prefs => {
+  for (const [k, val] of Object.entries(prefs || {})) if (!LAYOUT_KEYS.includes(k)) ui[k] = val;
+  applyTheme(); applyAccountColours();
+  Terminals.setSizer(id => ui.termZoom[id] || ui.termFont);
+  Terminals.setFontSize(ui.termFont);
+  Terminals.setFontFamily(ui.termFamily);
+  applyZoom();
+  renderAll();
+});
 // what the overlay says when a session ends, from the exit code; the shell keeps its last screen behind it
 function exitCopy(s, e) {
   const code = e && e.exitCode != null ? e.exitCode : null;
@@ -1505,7 +1669,7 @@ desk.onToast((msg, kind) => toast(msg, kind));
 
 $('#new-shell').onclick = () => newSession('shell');
 $('#mem-now').onclick = async () => { $('#mem-now').disabled = true; snap = await desk.memoryNow(); renderAll(); $('#mem-now').disabled = false; };
-$('#mem-toggle').onclick = () => { ui.showMem = !ui.showMem; saveUi(); renderMemToggle(); renderSidebar(); };
+$('#mem-toggle').onclick = () => { ui.showMem = !ui.showMem; saveUi(); renderMemToggle(); renderSidebar(); renderSetup(); };
 function renderMemToggle() {
   const b = $('#mem-toggle');
   b.classList.toggle('on', !!ui.showMem);

@@ -13,6 +13,7 @@ process.stdin.on('end', () => {
   const pct = w => w && typeof w.used_percentage === 'number' ? Math.round(w.used_percentage) : null;
   const reset = w => w && typeof w.resets_at === 'number' ? w.resets_at : null;
   const cost = j.cost && typeof j.cost.total_cost_usd === 'number' ? j.cost.total_cost_usd : 0;
+  let chainDue = false;
   const sid = String(j.session_id || '').replace(/[^A-Za-z0-9-]/g, '').slice(0, 64);
   const now = { five_hour: pct(rl.five_hour), seven_day: pct(rl.seven_day), five_hour_reset: reset(rl.five_hour), seven_day_reset: reset(rl.seven_day) };
   if (sid) {
@@ -25,6 +26,9 @@ process.stdin.on('end', () => {
     if (typeof prev.last === 'number' && cost < prev.last) base += prev.last;
     const rec = { account: Number(process.env.DESK_ACCOUNT) || 0, base, last: cost, t: Math.floor(Date.now() / 1000) };
     for (const k of Object.keys(now)) rec[k] = now[k] != null ? now[k] : (prev[k] != null ? prev[k] : null);
+    const chain = process.env.DESK_STATUS_CHAIN;
+    rec.chain = prev.chain || 0;
+    if (chain && rec.t - rec.chain >= 30) { rec.chain = rec.t; chainDue = true; }
     try {
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(file + '.tmp', JSON.stringify(rec));
@@ -38,4 +42,8 @@ process.stdin.on('end', () => {
   if (now.five_hour == null && cost) parts.push(`$${cost.toFixed(2)}`);
   if (j.context_window && typeof j.context_window.used_percentage === 'number') parts.push(`ctx ${Math.round(j.context_window.used_percentage)}%`);
   process.stdout.write(parts.join('  '));
+  // the account's own status line still runs for the files it keeps, its output thrown away
+  if (chainDue) {
+    try { require('child_process').spawnSync(process.env.DESK_STATUS_CHAIN, { input: raw, shell: true, stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true, timeout: 10000 }); } catch { /* not ours to fix */ }
+  }
 });
