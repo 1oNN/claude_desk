@@ -36,6 +36,7 @@
       { label: 'Desk &home', cmd: 'home', check: () => ui.nav === 'home' },
       { label: 'P&rojects', cmd: 'projects', check: () => ui.nav === 'projects' },
       { label: '&Needs you', cmd: 'attention', check: () => ui.nav === 'attention' },
+      { label: '&Usage', cmd: 'usage', check: () => ui.nav === 'usage' },
       '-',
       { label: '&Sidebar', cmd: 'sidebar', check: () => !ui.sidebar.collapsed && !ui.sidebar.hidden },
       { label: '&Left panel', cmd: 'panel', check: () => !ui.sidebar.hidden },

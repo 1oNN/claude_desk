@@ -311,14 +311,17 @@ function snapshot() {
     for (const s of sessions) { const r = rt(s.id); if (r.status === 'live' && (r.state === 'waiting' || r.state === 'finished')) badge++; mem += r.mem || 0; }
     return { ...p, badge, mem, foreign: foreign[p.machine].get(p.key) || [] };
   });
-  const sessions = state.sessions.map(s => ({ ...s, ...rt(s.id) }));
+  const accs = readAccounts(), bySid = accountsCache.sid;
+  // a Claude session's context and model, from its status line; dropped once it has not reported for 5 minutes
+  const useOf = s => { const u = s.kind !== 'shell' && s.sid && bySid[s.sid]; return u && Date.now() / 1000 - u.t < 300 ? { ctx: u.ctx, model: u.model } : null; };
+  const sessions = state.sessions.map(s => ({ ...s, ...rt(s.id), use: useOf(s) }));
   const totals = { pc: 0, laptop: 0 };
   for (const s of sessions) totals[s.machine] += s.mem || 0;
   return {
     projects, sessions, colours: C.COLOURS, roles: C.ROLES, accountList: accountView(),
     windows: windowList(), owners: Object.fromEntries(owner), notifier: lastFocused,
     laptop: { status: laptop.status, error: laptop.error, host: laptop.cfg ? laptop.cfg.host : null, mem: lastLaptopPoll ? lastLaptopPoll.mem : null, accounts: laptopAccounts },
-    totals, accounts: readAccounts(), setup: { ...C.setup(), start }, now: Date.now(),
+    totals, accounts: accs, setup: { ...C.setup(), start }, now: Date.now(),
     app: { name: C.APP_NAME, version: app.getVersion() },
   };
 }
@@ -347,7 +350,7 @@ function pushSnapshot() {
 }
 
 // Usage limits per account from the status files the Claude sessions write. Read on each snapshot, cached for 10 s.
-let accountsCache = { at: 0, v: {} };
+let accountsCache = { at: 0, v: {}, sid: {} };
 // names, colours and sign-in state; the sign-in check stats two files per account, so it is cached for 2 s
 let viewCache = { at: 0, v: [] };
 function accountView() {
@@ -356,7 +359,7 @@ function accountView() {
 }
 function readAccounts() {
   if (Date.now() - accountsCache.at < 10000) return accountsCache.v;
-  const v = usage.read();
+  const sid = {}, v = usage.read(sid);
   if (C.STATUS) for (const n of accounts.ids()) {
     try {
       const j = JSON.parse(fs.readFileSync(path.join(C.STATUS, `claude-${n}.json`), 'utf8'));
@@ -366,7 +369,7 @@ function readAccounts() {
     const cost = readCost(n);
     if (cost) v[n] = Object.assign(v[n] || {}, { cost });
   }
-  accountsCache = { at: Date.now(), v };
+  accountsCache = { at: Date.now(), v, sid };
   return v;
 }
 

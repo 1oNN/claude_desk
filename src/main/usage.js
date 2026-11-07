@@ -43,7 +43,8 @@ function settingsArg(account) {
 }
 
 // newest limits per account; cost only for accounts that never reported limits, since only API-key accounts pay per token
-function read() {
+// bySid, when given, collects each session's own numbers by Claude session id
+function read(bySid) {
   const v = {};
   let files = [];
   try { files = fs.readdirSync(STATUS).filter(f => f.endsWith('.json')); } catch { return v; }
@@ -53,6 +54,7 @@ function read() {
     let r;
     try { r = JSON.parse(fs.readFileSync(path.join(STATUS, f), 'utf8')); } catch { continue; }
     if (!Number.isInteger(r.account) || r.account < 1) continue;
+    if (bySid) bySid[f.slice(0, -5)] = { ctx: r.ctx ?? null, model: r.model || null, cost: (r.base || 0) + (r.last || 0), t: r.t || 0 };
     const a = acc.get(r.account) || { t: 0, limits: false, total: 0, live: 0, open: 0, sessions: 0 };
     if (r.five_hour != null || r.seven_day != null) {
       a.limits = true;

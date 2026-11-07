@@ -83,6 +83,9 @@ session is resumed after Desk was closed in the middle of a turn, an optional on
 Usage limits (five-hour and seven-day, or cost this month for API-key accounts) come from the
 status line Desk gives its own sessions, so they cost no tokens and make no network calls. If
 an account already has its own `statusLine`, Desk leaves it alone and shows no usage for it.
+The Usage page (the gauge in the activity bar, or View > Usage) lists every account with both
+limits and when they reset, then each live Claude session on it with its model and how full its
+context is.
 
 </details>
 

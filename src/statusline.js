@@ -26,6 +26,9 @@ process.stdin.on('end', () => {
     if (typeof prev.last === 'number' && cost < prev.last) base += prev.last;
     const rec = { account: Number(process.env.DESK_ACCOUNT) || 0, base, last: cost, t: Math.floor(Date.now() / 1000) };
     for (const k of Object.keys(now)) rec[k] = now[k] != null ? now[k] : (prev[k] != null ? prev[k] : null);
+    // for the Usage page: how full this session's context is and which model it runs
+    rec.ctx = j.context_window && typeof j.context_window.used_percentage === 'number' ? Math.round(j.context_window.used_percentage) : (prev.ctx ?? null);
+    rec.model = j.model && typeof j.model.display_name === 'string' ? j.model.display_name.slice(0, 40) : (prev.model || null);
     const chain = process.env.DESK_STATUS_CHAIN;
     rec.chain = prev.chain || 0;
     if (chain && rec.t - rec.chain >= 30) { rec.chain = rec.t; chainDue = true; }

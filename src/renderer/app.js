@@ -2,7 +2,7 @@ let snap = null;
 let myWid = null; // which Desk window this page is
 const LAYOUT_KEYS = ['current', 'views', 'nav', 'sidebar', 'expanded'];
 let ui = { current: null, views: {}, expanded: {}, lastAccount: {}, nav: 'projects', theme: '', sidebar: { w: 300, collapsed: false, hidden: false }, showMem: false, picker: {}, flash: true, notify: false, uiScale: 1, termFont: 14, zoom: {}, termZoom: {} };
-const NAVS = ['home', 'projects', 'attention', 'settings'];
+const NAVS = ['home', 'projects', 'attention', 'usage', 'settings'];
 let dragId = null;
 
 const $ = s => document.querySelector(s);
@@ -87,6 +87,7 @@ function renderAll() {
   renderShell();
   renderStatus();
   renderHome();
+  renderUsage();
   renderPalette();
 }
 
@@ -104,7 +105,8 @@ const STATE_COLOUR = { working: 'working', waiting: 'waiting', finished: 'finish
 function renderShell() {
   const nav = NAVS.includes(ui.nav) ? ui.nav : 'projects';
   for (const b of $$('#activity .act')) { b.classList.toggle('on', b.dataset.nav === nav); Dom.attr(b, 'aria-current', b.dataset.nav === nav ? 'page' : null); }
-  $('#home').hidden = nav === 'settings' || !(nav === 'home' || nav === 'attention' || !ui.current);
+  $('#home').hidden = nav === 'settings' || nav === 'usage' || !(nav === 'home' || nav === 'attention' || !ui.current);
+  $('#usage-page').hidden = nav !== 'usage';
   renderZoom();
   applyZoom();
   if (typeof Settings !== 'undefined') Settings.show(nav === 'settings');
@@ -237,9 +239,77 @@ function renderHomeUsage() {
     r.append(bars, Dom.h('span', 'ut', a.signedIn ? limitText(u) : 'not signed in'));
     box.appendChild(r);
   }
+  box.appendChild(linkRow('i-usage', 'Open Usage', 'resets, context and model per session', () => showNav('usage')));
   const m = Dom.h('p', 'umem'); m.append(Dom.h('b', null, 'PC memory '), document.createTextNode(Sidebar.fmtMem(snap.totals.pc) || 'not measured'));
   box.appendChild(m);
 }
+// the Usage page: per account, the 5 hour and weekly limits with their resets (or the month's cost on an API account), then each live Claude session on it with its model and context
+let lastUsePageSig = '';
+function meter(label, v, foot, hot) {
+  const m = Dom.h('div', 'meter' + (hot ? ' hot' : ''));
+  const top = Dom.h('div', 'm-top'); top.append(Dom.h('span', 'm-l', label), Dom.h('span', 'm-v', v));
+  m.appendChild(top);
+  if (typeof hot === 'boolean') { const b = Dom.h('div', 'm-bar'); const i = Dom.h('i'); i.style.width = (parseInt(v, 10) || 0) + '%'; b.appendChild(i); m.appendChild(b); }
+  m.appendChild(Dom.h('div', 'm-f', foot || ''));
+  return m;
+}
+function renderUsage() {
+  if (!snap || $('#usage-page').hidden) return;
+  const al = snap.accountList || [], acc = snap.accounts || {};
+  const claude = snap.sessions.filter(s => s.kind !== 'shell' && s.machine === 'pc');
+  const projName = s => { const p = projectByKey(s.machine + ':' + s.project); return p ? p.name : s.project; };
+  // the minute in the signature keeps "resets in" and "updated" honest without a redraw every second
+  const sig = JSON.stringify([Math.floor(Date.now() / 60000), al.map(a => [a.id, a.name, a.role, a.signedIn]), acc, claude.map(s => [s.id, s.name, s.account, s.status, stateOf(s), s.use, s.project])]);
+  if (sig === lastUsePageSig) return;
+  lastUsePageSig = sig;
+  const live = claude.filter(s => s.status === 'live');
+  const withData = al.filter(a => acc[a.id] && (acc[a.id].updated != null || acc[a.id].cost)).length;
+  Dom.text($('#use-sub'), `${al.length} account${al.length === 1 ? '' : 's'}, ${withData} with numbers, ${live.length} live Claude session${live.length === 1 ? '' : 's'}.`);
+  const list = $('#use-list'), had = document.activeElement && document.activeElement.closest('#use-list .srow');
+  const focusKey = had ? had.dataset.id : null;
+  list.textContent = '';
+  for (const a of al) {
+    const u = acc[a.id];
+    const box = Dom.h('section', 'uacc'); box.style.cssText = `--acc: var(--acc-${a.id}); --acc-strong: var(--acc-${a.id}-strong)`;
+    const head = Dom.h('header', 'ua-head');
+    head.append(Dom.h('span', 'acc', String(a.id)), Dom.h('h2', null, a.name));
+    if (a.role) head.appendChild(Dom.h('span', 'ua-role', a.role));
+    const upd = !a.signedIn ? 'not signed in' : u && u.updated ? `updated ${fmtAge(Date.now() - u.updated * 1000)} ago` + (Date.now() / 1000 - u.updated > 3600 ? ', stale' : '') : u && u.cost ? 'API credit, billed per token' : 'no numbers yet';
+    head.appendChild(Dom.h('span', 'ua-upd', upd));
+    box.appendChild(head);
+    const meters = Dom.h('div', 'meters');
+    if (u && u.cost) {
+      meters.append(meter(`Spent in ${monthName(u.cost.month)}`, usd(u.cost.total), `${u.cost.sessions} session${u.cost.sessions === 1 ? '' : 's'} this month`),
+        meter('Open now', usd(u.cost.live), `${u.cost.open} session${u.cost.open === 1 ? '' : 's'} reporting in the last 2 minutes`));
+    } else {
+      for (const [k, l] of [['five_hour', '5 hour window'], ['seven_day', 'Weekly']]) {
+        const v = u ? pct(u[k]) : null;
+        meters.appendChild(v == null ? meter(l, 'n/a', a.signedIn ? 'shows once a session in Desk reports' : 'sign in first') : meter(l, v + '%', fmtReset(u[k + '_reset']) || 'reset time not reported', v >= 80));
+      }
+    }
+    box.appendChild(meters);
+    const mine = claude.filter(s => s.account === a.id && s.status === 'live');
+    const rows = Dom.h('div', 'srows');
+    if (!mine.length) rows.appendChild(Dom.h('p', 'none', 'No live Claude session on this account.'));
+    for (const s of mine) {
+      const st = stateOf(s);
+      const r = Dom.h('button', 'srow'); r.dataset.id = s.id;
+      r.style.setProperty('--st', `var(--st-${STATE_COLOUR[st] || 'idle'})`);
+      const ctx = s.use && s.use.ctx != null ? pct(s.use.ctx) : null;
+      const cb = Dom.h('span', 'cbar' + (ctx != null && ctx >= 80 ? ' hot' : '')); const ci = Dom.h('i'); ci.style.width = (ctx || 0) + '%'; cb.appendChild(ci);
+      r.append(Dom.h('span', 'sdot'), Dom.h('span', 'sname', s.name), Dom.h('span', 'proj', projName(s)), Dom.h('span', 'word', STATE_WORD[st] || st),
+        Dom.h('span', 'model', (s.use && s.use.model) || ''), cb, Dom.h('span', 'cpct', ctx == null ? 'context n/a' : `context ${ctx}%`));
+      r.title = `${s.name} in ${projName(s)}: ${STATE_WORD[st] || st}${ctx != null ? `, context ${ctx}% full` : ''}. Click to open`;
+      r.onclick = () => H.onSession(s);
+      rows.appendChild(r);
+    }
+    box.appendChild(rows);
+    list.appendChild(box);
+  }
+  if (!al.length) list.appendChild(Dom.h('p', 'none', 'No accounts yet. Add one in Settings, Accounts.'));
+  if (focusKey) { const f = list.querySelector(`.srow[data-id="${CSS.escape(focusKey)}"]`); if (f) f.focus(); }
+}
+setInterval(() => { if (snap && ui.nav === 'usage') renderUsage(); }, 15000);
 $('#home-onstart').onchange = e => { ui.welcomeOnStart = e.target.checked; saveUi(); };
 
 let lastHomeSig = '';
@@ -318,7 +388,7 @@ $('#home-list').addEventListener('keydown', e => {
 function setNav(nav) {
   if (!NAVS.includes(nav)) return;
   if (nav === ui.nav && nav === 'projects') { toggleSidebar(); return; }
-  if (nav === ui.nav && nav === 'settings') nav = 'projects';
+  if (nav === ui.nav && (nav === 'settings' || nav === 'usage')) nav = 'projects';
   ui.nav = nav;
   if (ui.sidebar.collapsed && nav === 'projects') ui.sidebar.collapsed = false;
   if (nav !== 'settings') ui.sidebar.hidden = false;
@@ -464,7 +534,7 @@ function fmtReset(t) {
   if (!t) return '';
   const ms = t * 1000 - Date.now();
   if (ms <= 0) return 'reset due';
-  const h = Math.floor(ms / 3600000), m = Math.round((ms % 3600000) / 60000);
+  const mins = Math.round(ms / 60000), h = Math.floor(mins / 60), m = mins % 60;
   return h >= 24 ? `resets in ${Math.round(h / 24)} d` : h ? `resets in ${h} h ${m} m` : `resets in ${m} m`;
 }
 const monthName = m => new Date(Number(m.slice(0, 4)), Number(m.slice(5)) - 1, 1).toLocaleString('en-GB', { month: 'short' });
@@ -1097,7 +1167,7 @@ const REGIONS = {
   side: { name: 'Sidebar', els: ['#activity', '#sidebar'] },
   top: { name: 'Top bars', els: ['#projbar', '#tabbar'] },
   status: { name: 'Status bar', els: ['#status'] },
-  home: { name: 'Home', els: ['#home'] },
+  home: { name: 'Home', els: ['#home', '#usage-page'] },
 };
 const TSIZES = [9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24, 28];
 const rz = r => ((ui.zoom && ui.zoom[r]) || 100) / 100;
@@ -1170,7 +1240,7 @@ function zoomTarget(el) {
   if (el.closest('#activity, #sidebar')) return { region: 'side' };
   if (el.closest('#projbar, #tabbar')) return { region: 'top' };
   if (el.closest('#status')) return { region: 'status' };
-  if (el.closest('#home')) return { region: 'home' };
+  if (el.closest('#home, #usage-page')) return { region: 'home' };
   return null;
 }
 function zoomAt(t, d) {
@@ -1353,6 +1423,7 @@ const COMMANDS = [
   { id: 'panel', name: () => ui.sidebar.hidden ? 'Show the left panel' : 'Hide the left panel', sub: 'the icons and the sidebar together', key: 'Ctrl+Shift+B', run: () => togglePanel() },
   { id: 'home', name: 'Desk home', sub: 'every session, the ones that need you first', run: () => showNav('home') },
   { id: 'projects', name: 'Projects', sub: 'the sidebar list', run: () => showNav('projects') },
+  { id: 'usage', name: 'Usage', sub: 'live limits for every account, context per session', run: () => showNav('usage') },
   { id: 'attention', name: 'Needs you', sub: () => { const n = snap ? snap.sessions.filter(ATTN).length : 0; return n ? `${n} waiting` : 'nothing waiting'; }, run: () => showNav('attention') },
   { id: 'settings', name: 'Settings', key: 'Ctrl+,', run: () => showNav('settings') },
   { id: 'keys', name: 'Keys', sub: 'every shortcut on one card', key: 'Ctrl+/', run: () => keysPop.open(true) },

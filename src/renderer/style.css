@@ -20,6 +20,8 @@ svg.g { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-widt
 .ibtn:disabled { color: var(--ink-4); background: none; cursor: default; }
 .ibtn .acc { width: 14px; height: 14px; border-radius: 3px; background: var(--acc); border: 1px solid var(--acc-strong); color: var(--acc-chip-ink); font: 600 10px/12px var(--font-ui); text-align: center; }
 .acc { --acc: var(--acc-0); --acc-strong: var(--acc-0-strong); }
+/* rows on Welcome and Usage set the account colour on the row, so their chips take it from there */
+#home .acc, #usage-page .acc { --acc: inherit; --acc-strong: inherit; }
 .sep { width: 1px; height: 16px; background: var(--line); margin: 0 var(--sp-2); flex: none; }
 .chip { display: inline-flex; align-items: center; gap: 5px; height: 18px; padding: 0 7px; border-radius: var(--r-full); font-size: var(--fs-11); color: var(--ink-2); background: var(--surface-2); white-space: nowrap; }
 .chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--st-finished); }
@@ -391,6 +393,50 @@ body.typing .glyph svg, body.typing .machine .chip.conn { animation-play-state: 
   #home .row .proj, #home .row .label { display: none; }
   #home .urow { grid-template-columns: 20px minmax(0, 1fr) auto; }
   #home .urow .ut { grid-column: 2 / -1; margin-bottom: var(--sp-3); }
+}
+
+#usage-page { position: absolute; inset: 0; z-index: 3; overflow: auto; background: var(--paper); container-type: inline-size; }
+#usage-page .use-in { max-width: 1040px; margin: 0 auto; padding: var(--sp-8) 48px; }
+#usage-page h1 { font: 600 var(--fs-28)/var(--lh-display) var(--font-display); margin: 0 0 var(--sp-2); letter-spacing: -.01em; }
+#usage-page .sub { color: var(--ink-3); margin: 0 0 var(--sp-7); }
+#usage-page .uacc { border-top: 1px solid var(--line); padding: var(--sp-6) 0 var(--sp-7); position: relative; }
+#usage-page .ua-head { display: flex; align-items: center; gap: var(--sp-4); margin-bottom: var(--sp-5); min-width: 0; }
+#usage-page .ua-head h2 { font: 600 var(--fs-16)/var(--lh-display) var(--font-display); margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#usage-page .ua-head .acc { flex: none; width: 20px; height: 20px; border-radius: var(--r-1); background: var(--acc); border: 1px solid var(--acc-strong); color: var(--acc-chip-ink); font: 600 var(--fs-12)/18px var(--font-ui); text-align: center; }
+#usage-page .ua-role { color: var(--ink-2); font-size: var(--fs-12); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#usage-page .ua-upd { margin-left: auto; flex: none; color: var(--ink-3); font-size: var(--fs-12); }
+#usage-page .meters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-5) var(--sp-8); margin-bottom: var(--sp-5); }
+#usage-page .meter .m-top { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-4); }
+#usage-page .meter .m-l { color: var(--ink-2); font-size: var(--fs-13); }
+#usage-page .meter .m-v { font: 600 var(--fs-28)/1.1 var(--font-display); font-variant-numeric: tabular-nums; }
+#usage-page .meter.hot .m-v { color: var(--st-waiting); }
+#usage-page .m-bar { height: 8px; border-radius: 4px; background: var(--surface-3); overflow: hidden; margin: var(--sp-3) 0 var(--sp-2); }
+#usage-page .m-bar i { display: block; height: 100%; background: var(--acc-strong); }
+#usage-page .meter.hot .m-bar i { background: var(--st-waiting); }
+#usage-page .m-f { color: var(--ink-3); font-size: var(--fs-12); }
+#usage-page .srows { display: flex; flex-direction: column; }
+#usage-page .srow { display: grid; grid-template-columns: 10px minmax(80px, 1.2fr) minmax(0, 1fr) 72px minmax(0, .9fr) 96px 92px; column-gap: var(--sp-5); align-items: center; min-height: 34px; padding: 0 var(--sp-4); border: 0; border-top: 1px solid var(--line); background: none; text-align: left; color: var(--ink); font-size: var(--fs-12); }
+#usage-page .srow:hover { background: var(--surface); }
+#usage-page .srow:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+#usage-page .srow .sdot { width: 8px; height: 8px; border-radius: 50%; background: var(--st); }
+#usage-page .srow .sname { font-family: var(--font-mono); font-size: var(--fs-13); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#usage-page .srow .proj, #usage-page .srow .model { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#usage-page .srow .word { color: var(--st); white-space: nowrap; }
+#usage-page .cbar { height: 5px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+#usage-page .cbar i { display: block; height: 100%; background: var(--st-finished); }
+#usage-page .cbar.hot i { background: var(--st-waiting); }
+#usage-page .cpct { color: var(--ink-3); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#usage-page .none { color: var(--ink-3); font-size: var(--fs-12); margin: 0; }
+#usage-page .use-foot { color: var(--ink-3); font-size: var(--fs-12); border-top: 1px solid var(--line); padding-top: var(--sp-5); max-width: 72ch; }
+@container (max-width: 760px) {
+  #usage-page .use-in { padding: var(--sp-7) var(--sp-6); }
+  #usage-page .srow { grid-template-columns: 10px minmax(0, 1fr) 64px 80px; row-gap: 2px; padding: var(--sp-3) var(--sp-4); }
+  #usage-page .srow .proj, #usage-page .srow .model, #usage-page .srow .word { display: none; }
+}
+@container (max-width: 520px) {
+  #usage-page .meters { grid-template-columns: minmax(0, 1fr); }
+  #usage-page .ua-head { flex-wrap: wrap; }
+  #usage-page .ua-upd { margin-left: 0; flex-basis: 100%; }
 }
 
 #toasts { position: fixed; right: 12px; bottom: 36px; display: flex; flex-direction: column; gap: 6px; z-index: 10; }
