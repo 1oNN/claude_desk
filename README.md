@@ -112,13 +112,19 @@ Measured on Windows 11 with the build in this repo:
 | --- | --- | --- |
 | Desk idle, no sessions | about 200 MB | about 510 MB |
 | Each extra window | about 45-50 MB | about 124 MB |
+| Each Claude session (Windows process list) | 762-1,107 MB | 354-490 MB |
 
-The main process grows about 11 MB per shell. The sessions themselves are what fill memory:
-a Claude session is 400 MB or more and a shell about 100 MB (older figures, not re-measured
-for this version). By default Desk starts only the sessions that were in the panes of the
-project you were last on; the rest show a Resume button. A pane hidden for a minute drops its
-terminal buffer and gets the last 128 KB back when shown again. Software painting in
-Settings drops the GPU process, about 100 MB.
+The sessions are what fill memory, not Desk. On one Desk running seven Claude sessions, Desk's
+own processes were 479 of 3,771 MB working set (13%) and the Claude sessions 2,903 MB. The main
+process grows about 11 MB per shell. By default Desk starts only the sessions that were in the
+panes of the project you were last on; the rest show a Resume button. A pane hidden for a
+minute drops its terminal buffer and gets the last 128 KB back when shown again. Software
+painting in Settings drops the GPU process, about 100 MB.
+
+Rewriting Desk in Rust would not change this much. Claude Code is its own program and stays
+the same size. Tauri still draws with a Chromium (WebView2), so it would save an estimated
+0-150 MB; a native UI an estimated 330-430 MB, about a tenth. Closing a session you are not
+using saves 354-490 MB each.
 
 </details>
 
@@ -241,7 +247,7 @@ closes when you pick something, and under 640 the menus fold into one button.
 | Windows only | The window frame, the shells and the account junctions are Windows code. |
 | Unsigned installer | SmartScreen warns on first install until the app is code signed. |
 | Mouse in Claude Code | Claude Code turns on mouse reporting, so selecting text in its pane needs Shift held while you drag. Right click pastes rather than opening a menu. |
-| Memory | Every Claude session is its own process at 400 MB or more, so eight panes of Claude is several GB. Resume on demand is the default for that reason. |
+| Memory | Every Claude session is its own process at 350-490 MB working set, so eight panes of Claude is several GB. Resume on demand is the default for that reason, and the power icon on a pane stops a session you are done with. |
 
 ## Settings and data
 

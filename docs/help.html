@@ -55,11 +55,13 @@ It makes two kinds of network connection, and only these:</p>
     <tr><td>Desk idle, no sessions</td><td class="num">about 200 MB</td><td class="num">about 510 MB</td></tr>
     <tr><td>Each extra window</td><td class="num">about 45-50 MB</td><td class="num">about 124 MB</td></tr>
     <tr><td>Each shell, in Desk's main process</td><td class="num">about 11 MB</td><td></td></tr>
+    <tr><td>Each Claude session (Windows process list)</td><td class="num">762-1,107 MB</td><td class="num">354-490 MB</td></tr>
   </tbody>
 </table>
-<p>The sessions themselves are what fill memory. A Claude session is 400 MB or more and a
-shell about 100 MB; those two figures come from the previous version and were not measured
-again.</p>
+<p>The sessions are what fill memory, not Desk. On one Desk running seven Claude sessions,
+Desk's own processes were 479 of 3,771 MB working set (13%) and the Claude sessions 2,903 MB.
+Rewriting Desk in another language would not change that: Claude Code is its own program and
+stays the same size. Stopping a session you are not using saves 354-490 MB each.</p>
 <ul>
   <li>By default Desk starts only the sessions that were in the panes of the project you were
   last on. The rest show a Resume button. Settings, Sessions, Start with Desk changes this.</li>
@@ -135,7 +137,7 @@ zoom (<kbd>Ctrl+Shift+0</kbd>) puts the window zoom back to 100%.</p>
     <tr><td>Windows only</td><td>The window frame, the shells and the account junctions are Windows code.</td></tr>
     <tr><td>Unsigned installer</td><td>SmartScreen warns on first install until the app is code signed.</td></tr>
     <tr><td>Mouse in Claude Code</td><td>Selecting text needs <kbd>Shift</kbd> held; right click pastes rather than opening a menu.</td></tr>
-    <tr><td>Memory</td><td>Each Claude session is its own process at 400 MB or more, so eight panes of Claude is several GB.</td></tr>
+    <tr><td>Memory</td><td>Each Claude session is its own process at 350-490 MB working set, so eight panes of Claude is several GB. The power icon on a pane stops one you are done with.</td></tr>
   </tbody>
 </table>
 
