@@ -20,7 +20,7 @@ to different Claude accounts. Desk starts, shows, hides, stops and resumes them.
 wrap the chat, edit your files or show git. The terminal is Claude Code itself; Desk puts a
 frame around it.
 
-![Three projects in the sidebar: two sessions working, two that need you, and api open in three panes](docs/img/overview-1600.png)
+![Three accounts across three projects: a session turns to needs you, then the Usage page shows each account's limits and one of them climbing](docs/img/demo-readme.gif)
 
 Claude Desk is an independent project. It is not made by or affiliated with Anthropic.
 
@@ -53,10 +53,18 @@ is waiting. The VS Code column comes from the extension's documentation
 ([code.claude.com/docs/en/vs-code](https://code.claude.com/docs/en/vs-code)), read on
 2026-11-08; the extension changes often, so check it there.
 
+Anthropic also has a Claude Code desktop app for Windows, macOS and Linux (beta), with a session
+sidebar, SSH sessions and one usage ring for the account you are signed in to. Its documentation
+([code.claude.com/docs/en/desktop](https://code.claude.com/docs/en/desktop), read on 2026-11-08)
+does not mention a second account. If you use one account and want diffs beside the chat, use
+that app. Desk is for running several accounts at once and watching their limits side by side.
+
 ## Projects on the left
 
 The sidebar holds every project you work in, each as its own section, so one window covers all
 of them.
+
+![Three projects in the sidebar: two sessions working, two that need you, and api open in three panes](docs/img/overview-1600.png)
 
 - **Where projects come from.** Desk finds your projects folder (`~\Projects` and a few usual
   names, or `DESK_PROJECTS`). A project gets a section once it has a session or you add it. **All folders**
