@@ -1,9 +1,9 @@
-// Alliance mode only: one line per Claude session saying what it is doing now, from Haiku every 30 s when the transcript grew.
+// Alliance mode only: one line per Claude session saying what it is doing now, from Haiku every 10 minutes when the transcript grew.
 const fs = require('fs');
 const { execFile } = require('child_process');
 const C = require('./consts');
 
-const EVERY_MS = 30 * 1000;
+const EVERY_MS = 10 * 60 * 1000;
 const TAIL = 256 * 1024;
 const MODEL = 'claude-haiku-5-5';
 const SYSTEM = 'You label a Claude Code session for a sidebar. Reply with one line, at most 8 words, saying what the session is doing right now, or what it just finished if the last message from Claude ended the turn. Plain words, no quotes, no dashes, no full stop.';

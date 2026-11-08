@@ -90,7 +90,7 @@ const Settings = (() => {
       label: 'Show how much memory each session uses, in the sidebar', get: () => !!ui.showMem, def: false,
       set: v => { ui.showMem = v; saveUi(); renderMemToggle(); renderSidebar(); } },
     { id: 'oneLiner', cat: 'Sessions', title: 'Live one-liner', type: 'bool', keys: 'haiku summary line sidebar alliance', when: () => su().alliance,
-      label: 'Ask Haiku every 30 s what each working Claude session is doing (on that session\'s own subscription)',
+      label: 'Ask Haiku every 10 minutes what each working Claude session is doing (on that session\'s own subscription)',
       note: () => 'Applies at the next start.', get: () => su().oneLiner !== 'off', def: true, set: v => setSetting({ oneLiner: v ? 'on' : 'off' }, 'Applies at the next start') },
     { id: 'gpu', cat: 'Sessions', title: 'Graphics', type: 'seg', keys: 'gpu software ram memory painting',
       desc: 'Software painting drops the GPU process, about 100 MB, and uses the CPU instead. The window looks the same. Applies at the next start.',
