@@ -20,7 +20,7 @@ to different Claude accounts. Desk starts, shows, hides, stops and resumes them.
 wrap the chat, edit your files or show git. The terminal is Claude Code itself; Desk puts a
 frame around it.
 
-![Three panes in one project, with the sidebar and title bar](docs/img/panes-1600.png)
+![Three projects in the sidebar: two sessions working, two that need you, and api open in three panes](docs/img/overview-1600.png)
 
 Claude Desk is an independent project. It is not made by or affiliated with Anthropic.
 
@@ -75,7 +75,18 @@ of them.
 
 Ctrl+P jumps to any project or session by name, and Ctrl+B hides the sidebar when you want the
 room. The picture at the top shows three projects (`api`, `docs`, `web`) with `api` open in
-three panes.
+three panes. Two sessions are working and two need you, and the badge on `api` and `docs`
+counts the ones waiting.
+
+## Usage limits
+
+The Usage page (the gauge in the activity bar, or View > Usage) shows every account's
+five-hour and seven-day limits side by side, with when each resets, then each live Claude
+session on that account with its model and how full its context is. The numbers come from
+the status line Desk gives its own sessions, so reading them costs no tokens. Accounts that
+pay by API key show cost this month instead.
+
+![Usage page: three accounts with five-hour and seven-day limits, and five sessions with model and context](docs/img/usage-1600.png)
 
 ## How it works
 
@@ -285,6 +296,7 @@ closes when you pick something, and under 640 the menus fold into one button.
 | | |
 | --- | --- |
 | ![Panes at 375 px](docs/img/panes-375.png) | ![Sidebar over the panes](docs/img/sidebar-480.png) |
+| ![Usage page at 480 px](docs/img/usage-480.png) | |
 
 ## Known issues
 
