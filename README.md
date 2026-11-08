@@ -31,6 +31,52 @@ account, and no way to see at a glance which one is waiting for you. Desk keeps 
 place, marks the ones that need you, and gives each account its own config folder so logins
 never mix. It adds nothing to your prompts unless you ask it to, so it costs no tokens.
 
+## Why not just VS Code?
+
+Desk is not a fork of VS Code and shares no code with it; it borrows the look. The official
+Claude Code extension for VS Code is good at one thing Desk does not do at all: working on the
+code itself, with edits, diffs and git beside the chat. Desk is for the other job, keeping a lot
+of sessions running and knowing which one wants you. Plenty of people will want both.
+
+| | Claude Code in VS Code | Claude Desk |
+| --- | --- | --- |
+| Accounts | one sign-in at a time; a second account means setting `CLAUDE_CONFIG_DIR` in the extension's environment variables | every session picks its account; each account has its own folder and its limits shown side by side |
+| Commands | the chat panel has a subset of slash commands, no `!` shell shortcut and no tab completion | it is the real `claude` in a terminal, so every command, skill and shortcut works |
+| Projects | sessions belong to the folder the window has open | every project is on the left in one window, each with its own sessions and pane layout |
+| Who needs you | a coloured dot on a tab, and a Needs input filter in the sessions list | a needs you / working / finished word on every session in every project, plus a Windows notification and a taskbar flash |
+| Usage | `/usage` shows plan bars computed from the sessions on this machine | five-hour and seven-day limits for each account at once, read from the status line |
+| Editing code | yes: diffs, file mentions, git | no; keep your editor for that |
+
+You can also run `claude` in VS Code's own terminal to get the full command set, but then you
+have plain terminal tabs again, with no account per session and nothing telling you which one
+is waiting. The VS Code column comes from the extension's documentation
+([code.claude.com/docs/en/vs-code](https://code.claude.com/docs/en/vs-code)), read on
+2026-11-08; the extension changes often, so check it there.
+
+## Projects on the left
+
+The sidebar holds every project you work in, each as its own section, so one window covers all
+of them.
+
+- **Where projects come from.** Desk finds your projects folder (`~\Projects` and a few usual
+  names, or `DESK_PROJECTS`). A project gets a section once it has a session or you add it. **All folders**
+  at the bottom lists the rest of that folder, File > Open folder adds any folder on the PC, and
+  File > New project makes a new folder and opens it.
+- **A section per project.** The header shows the project's name, how many sessions it has, a
+  badge with how many need you, and a + that starts a new session there. The arrow folds it
+  away. Claude sessions started in that folder outside Desk are listed too, marked "not Desk".
+- **Sessions under it.** Each row has its account number, a state (working, needs you,
+  finished, idle), the line saying what it is about, and Resume or Stop.
+- **Its own panes.** Clicking a project shows that project's tabs and panes, one to eight at
+  once. Every project keeps its own layout, so switching from `api` to `web` and back puts the
+  panes where you left them.
+- **More than one machine.** With a remote machine set up, its projects sit in their own
+  section under the PC's.
+
+Ctrl+P jumps to any project or session by name, and Ctrl+B hides the sidebar when you want the
+room. The picture at the top shows three projects (`api`, `docs`, `web`) with `api` open in
+three panes.
+
 ## How it works
 
 ```mermaid
