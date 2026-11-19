@@ -21,7 +21,8 @@ function norm(p) { return p ? path.normalize(p) : null; }
 function first(cands, test) { for (const c of cands) if (test(c)) return c; return null; }
 
 function onPath(names) {
-  const dirs = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
+  // a relative entry resolves against the working folder, where anyone could plant a claude.exe
+  const dirs = (process.env.PATH || '').split(path.delimiter).filter(d => d && path.isAbsolute(d));
   for (const d of dirs) for (const n of names) { const p = path.join(d, n); if (isFile(p)) return p; }
   return null;
 }
