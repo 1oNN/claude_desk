@@ -88,6 +88,14 @@ function readTag(tag) {
   return { state: state ? state.trim() : null, summary: summary ? summary.trim() : null, title };
 }
 
+// claude's own status goes busy then idle when a turn ends, which is all "finished" needs without tag files;
+// it holds until the next turn starts, and a missing reading (half-written file) changes nothing
+function turnDone(prev, now, done) {
+  if (now === 'busy' || now === 'waiting') return false;
+  if (now === 'idle' && prev === 'busy') return true;
+  return !!done;
+}
+
 // Desk names look like myproject-2b; claude-N files belong to plain terminal sessions and are never touched
 function isDeskName(name) { return /^[a-z0-9-]+-\d+[a-z]$/.test(name || '') && !/^claude-\d+$/.test(name); }
 
@@ -118,4 +126,4 @@ function accountFromName(name) {
   return m ? Number(m[1]) : 0;
 }
 
-module.exports = { readRegistry, sessionDirs, refreshDirs, pidAlive, verifyStarts, isLive, forgetPid, readTag, cleanupFiles, projectSlug, allocateName, accountFromName, isDeskName };
+module.exports = { readRegistry, sessionDirs, refreshDirs, pidAlive, verifyStarts, isLive, forgetPid, readTag, turnDone, cleanupFiles, projectSlug, allocateName, accountFromName, isDeskName };

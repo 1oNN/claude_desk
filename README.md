@@ -74,7 +74,9 @@ of them.
   badge with how many need you, and a + that starts a new session there. The arrow folds it
   away. Claude sessions started in that folder outside Desk are listed too, marked "not Desk".
 - **Sessions under it.** Each row has its account number, a state (working, needs you,
-  finished, idle), the line saying what it is about, and Resume or Stop.
+  finished, idle), the last thing you asked it, and Resume or Stop. Finished means the turn
+  ended and you have not started the next one. Both come from files Claude Code already
+  writes, so they cost no tokens.
 - **Its own panes.** Clicking a project shows that project's tabs and panes, one to eight at
   once. Every project keeps its own layout, so switching from `api` to `web` and back puts the
   panes where you left them.
