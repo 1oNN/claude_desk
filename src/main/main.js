@@ -12,6 +12,7 @@ const { PcSessions } = require('./sessions');
 const { Laptop } = require('./laptop');
 const { OneLiner } = require('./oneliner');
 const alliance = require('./alliance');
+const asks = require('./asks');
 
 // keep painting while covered, so screenshots and hidden-window repaints stay current
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
@@ -96,20 +97,26 @@ function laptopProjects() {
     .map(dir => ({ key: key('laptop', dir), machine: 'laptop', dir, name: path.posix.basename(dir) }));
 }
 
-function deskState(tagState, regStatus) {
+function deskState(tagState, regStatus, done) {
   if (tagState === 'working' || regStatus === 'busy') return 'working';
   if (tagState === 'asking' || regStatus === 'waiting') return 'waiting';
   if (tagState === 'done' || tagState === 'running' || tagState === 'failed') return 'finished';
-  return 'idle';
+  return done ? 'finished' : 'idle';
 }
-function glyphFor(tagState, regStatus) {
+function glyphFor(tagState, regStatus, done) {
   if (tagState === 'working') return 'spin';
   if (tagState === 'asking') return 'asking';
   if (tagState === 'done' || tagState === 'running' || tagState === 'failed') return tagState;
   if (regStatus === 'busy') return 'spin';
   if (regStatus === 'waiting') return 'asking';
-  return 'idle';
+  return done ? 'done' : 'idle';
 }
+// the last status seen, so a busy to idle step marks the turn finished
+function track(r, regStatus) {
+  if (regStatus) { r.done = reg.turnDone(r.lastReg, regStatus, r.done); r.lastReg = regStatus; }
+}
+function untrack(r) { r.done = false; r.lastReg = null; }
+const transcriptOf = s => s.sid ? alliance.transcriptPath(s.account, s.cwd || s.project, s.sid) : null;
 
 function peersFor(session) {
   return state.sessions.filter(s => s.id !== session.id && s.machine === session.machine && s.project === session.project && s.kind !== 'shell').map(s => s.name);
@@ -148,9 +155,10 @@ function pollPc() {
       } else { r.regStatus = null; r.pid = rec.pid; }
       const tag = reg.readTag(s.tag);
       r.tagState = tag.state;
-      r.state = deskState(tag.state, r.regStatus);
-      r.glyph = glyphFor(tag.state, r.regStatus);
-      r.label = tag.summary || tag.title || '';
+      track(r, r.regStatus);
+      r.state = deskState(tag.state, r.regStatus, r.done);
+      r.glyph = glyphFor(tag.state, r.regStatus, r.done);
+      r.label = tag.summary || tag.title || asks.line(transcriptOf(s)) || r.label || '';
       r.now = oneLiner ? oneLiner.line(s.id) : null;
       r.status = 'live';
       r.elsewhere = null;
@@ -220,19 +228,20 @@ function applyLaptopPoll(p) {
       ourPids.add(entry.pid);
       const tag = p.tags[s.tag] || {};
       r.regStatus = entry.status; r.pid = entry.pid; r.tagState = tag.state || null;
-      r.state = deskState(tag.state, entry.status);
-      r.glyph = glyphFor(tag.state, entry.status);
+      track(r, entry.status);
+      r.state = deskState(tag.state, entry.status, r.done);
+      r.glyph = glyphFor(tag.state, entry.status, r.done);
       r.label = tag.summary || tag.title || '';
       r.status = 'live'; r.elsewhere = null;
       r.mem = memory.treeBytes(rows, tm.pid);
     } else if (tm) {
       // tmux session exists but claude is gone or not registered yet
       if (r.status === 'starting' && Date.now() - (r.startedAt || 0) < 20000) { /* still booting */ }
-      else { r.status = tm.dead ? 'exited' : (r.status === 'starting' ? 'starting' : 'exited'); r.state = 'idle'; r.glyph = 'exited'; r.pid = null; r.mem = 0; }
+      else { r.status = tm.dead ? 'exited' : (r.status === 'starting' ? 'starting' : 'exited'); r.state = 'idle'; r.glyph = 'exited'; r.pid = null; r.mem = 0; untrack(r); }
     } else {
       const holder = bySid.get(s.sid);
       if (holder) { r.status = 'elsewhere'; r.elsewhere = holder.name || `pid ${holder.pid}`; r.pid = holder.pid; r.state = 'idle'; r.glyph = 'elsewhere'; }
-      else if (r.status !== 'starting' && r.status !== 'queued') { r.status = 'stopped'; r.glyph = 'exited'; r.state = 'idle'; r.pid = null; r.mem = 0; }
+      else if (r.status !== 'starting' && r.status !== 'queued') { r.status = 'stopped'; r.glyph = 'exited'; r.state = 'idle'; r.pid = null; r.mem = 0; untrack(r); }
     }
   }
   const roots = laptopProjects();
@@ -441,7 +450,7 @@ async function stopSession(id) {
 async function forgetSession(id) {
   const s = byId(id); if (!s) return;
   await stopSession(id);
-  if (s.machine === 'pc') { pc.drop(id); reg.cleanupFiles(s.name, s.tag); if (oneLiner) oneLiner.forget(id); }
+  if (s.machine === 'pc') { pc.drop(id); reg.cleanupFiles(s.name, s.tag); if (oneLiner) oneLiner.forget(id); asks.forget(transcriptOf(s)); }
   else await laptop.cleanup(s.name, s.tag, true);
   state.sessions = state.sessions.filter(x => x.id !== id);
   runtime.delete(id);
@@ -491,12 +500,12 @@ async function sayToProject(projectKey, text) {
 
 // ---------- pc events ----------
 pc.on('data', sendData);
-pc.on('status', (id, st) => { const r = rt(id); r.status = st; if (st === 'live') { r.startedAt = Date.now(); r.error = null; send('desk:started', id); } pushSnapshot(); });
+pc.on('status', (id, st) => { const r = rt(id); r.status = st; if (st === 'live') { r.startedAt = Date.now(); r.error = null; untrack(r); send('desk:started', id); } pushSnapshot(); });
 pc.on('error', (id, msg) => { const r = rt(id); r.status = 'stopped'; r.error = msg; r.glyph = 'exited'; toast(`${(byId(id) || {}).name}: ${msg}`, 'error'); pushSnapshot(); });
 pc.on('exit', (id, e) => {
   const s = byId(id);
   const r = rt(id);
-  r.status = 'exited'; r.state = 'idle'; r.glyph = 'exited'; r.pid = null;
+  r.status = 'exited'; r.state = 'idle'; r.glyph = 'exited'; r.pid = null; untrack(r);
   if (s && !quitting) {
     // keep the summary label, drop the state so it does not show as finished forever
     if (s.tag && C.TAGS) { try { fs.unlinkSync(path.join(C.TAGS, s.tag + '.state')); } catch { /* none */ } }
