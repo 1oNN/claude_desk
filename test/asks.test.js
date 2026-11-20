@@ -55,4 +55,7 @@ test('a turn is finished from busy to idle and until the next one starts', () =>
   assert.strictEqual(turnDone('idle', 'busy', true), false);
   assert.strictEqual(turnDone('busy', 'waiting', false), false, 'asking is not finished');
   assert.strictEqual(turnDone('waiting', 'idle', false), false, 'Esc on a question is not a finished turn');
+  assert.strictEqual(turnDone('busy', 'shell', false), false, 'background shells still out');
+  assert.strictEqual(turnDone('shell', 'idle', false), true, 'the last shell ended');
+  assert.strictEqual(turnDone('idle', 'shell', true), false);
 });

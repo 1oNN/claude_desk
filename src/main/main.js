@@ -42,7 +42,7 @@ const owner = new Map(); // session id -> wid of the one window showing it
 let lastFocused = null;
 const oneLiner = C.ALLIANCE && C.SETTINGS.oneLiner !== 'off' ? new OneLiner({
   sessions: () => state.sessions.filter(s => s.machine === 'pc' && s.kind !== 'shell' && pc.isLive(s.id))
-    .map(s => ({ id: s.id, account: s.account, transcript: alliance.transcriptPath(s.account, s.cwd, s.sid) })),
+    .map(s => ({ id: s.id, account: s.account, transcript: liveTranscriptOf(s) })).filter(s => s.transcript),
   envFor: a => pc.baseEnv(a), log,
 }) : null;
 let booted = false;
@@ -97,26 +97,15 @@ function laptopProjects() {
     .map(dir => ({ key: key('laptop', dir), machine: 'laptop', dir, name: path.posix.basename(dir) }));
 }
 
-function deskState(tagState, regStatus, done) {
-  if (tagState === 'working' || regStatus === 'busy') return 'working';
-  if (tagState === 'asking' || regStatus === 'waiting') return 'waiting';
-  if (tagState === 'done' || tagState === 'running' || tagState === 'failed') return 'finished';
-  return done ? 'finished' : 'idle';
-}
-function glyphFor(tagState, regStatus, done) {
-  if (tagState === 'working') return 'spin';
-  if (tagState === 'asking') return 'asking';
-  if (tagState === 'done' || tagState === 'running' || tagState === 'failed') return tagState;
-  if (regStatus === 'busy') return 'spin';
-  if (regStatus === 'waiting') return 'asking';
-  return done ? 'done' : 'idle';
-}
+const { deskState, glyphFor } = reg;
 // the last status seen, so a busy to idle step marks the turn finished
 function track(r, regStatus) {
   if (regStatus) { r.done = reg.turnDone(r.lastReg, regStatus, r.done); r.lastReg = regStatus; }
 }
 function untrack(r) { r.done = false; r.lastReg = null; }
 const transcriptOf = s => s.sid ? alliance.transcriptPath(s.account, s.cwd || s.project, s.sid) : null;
+// a parked turn carries on in a forked transcript; follow it while the job is known
+const liveTranscriptOf = s => { const r = runtime.get(s.id); const sid = (r && r.liveSid) || s.sid; return sid ? alliance.transcriptPath(s.account, s.cwd || s.project, sid) : null; };
 
 function peersFor(session) {
   return state.sessions.filter(s => s.id !== session.id && s.machine === session.machine && s.project === session.project && s.kind !== 'shell').map(s => s.name);
@@ -147,18 +136,22 @@ function pollPc() {
     }
     if (rec && !rec.exited) {
       // after /tui or an in-session relaunch the registry file moves to a child pid under the same name
-      let entry = byPid.get(rec.pid) || live.find(e => e.name === s.name && !ourPids.has(e.pid) && !claimed.has(e.pid));
+      let entry = byPid.get(rec.pid) || live.find(e => e.name === s.name && e.kind !== 'bg' && !ourPids.has(e.pid) && !claimed.has(e.pid));
       if (entry) {
         claimed.add(entry.pid);
         if (entry.sessionId && entry.sessionId !== s.sid) { log('sid changed', s.name, s.sid, '->', entry.sessionId); s.sid = entry.sessionId; dirty = true; }
-        r.regStatus = entry.status; r.pid = entry.pid; r.registered = true;
+        const job = reg.parkedJob(entry, live);
+        if (job) { claimed.add(job.pid); r.liveSid = job.sessionId || r.liveSid; } else if (!entry.parkedJobId) r.liveSid = null;
+        r.regStatus = reg.liveStatus(entry, live); r.pid = entry.pid; r.registered = true;
       } else { r.regStatus = null; r.pid = rec.pid; }
       const tag = reg.readTag(s.tag);
       r.tagState = tag.state;
       track(r, r.regStatus);
+      const was = r.state;
       r.state = deskState(tag.state, r.regStatus, r.done);
       r.glyph = glyphFor(tag.state, r.regStatus, r.done);
-      r.label = tag.summary || tag.title || asks.line(transcriptOf(s)) || r.label || '';
+      if (oneLiner && r.state === 'finished' && was !== 'finished') oneLiner.soon(s.id);
+      r.label = tag.summary || tag.title || asks.line(liveTranscriptOf(s)) || r.label || '';
       r.now = oneLiner ? oneLiner.line(s.id) : null;
       r.status = 'live';
       r.elsewhere = null;
@@ -227,10 +220,10 @@ function applyLaptopPoll(p) {
       if (entry.sessionId && entry.sessionId !== s.sid) { log('laptop sid changed', s.name, s.sid, '->', entry.sessionId); s.sid = entry.sessionId; stateMod.save(state); }
       ourPids.add(entry.pid);
       const tag = p.tags[s.tag] || {};
-      r.regStatus = entry.status; r.pid = entry.pid; r.tagState = tag.state || null;
-      track(r, entry.status);
-      r.state = deskState(tag.state, entry.status, r.done);
-      r.glyph = glyphFor(tag.state, entry.status, r.done);
+      r.regStatus = reg.liveStatus(entry, live); r.pid = entry.pid; r.tagState = tag.state || null;
+      track(r, r.regStatus);
+      r.state = deskState(tag.state, r.regStatus, r.done);
+      r.glyph = glyphFor(tag.state, r.regStatus, r.done);
       r.label = tag.summary || tag.title || '';
       r.status = 'live'; r.elsewhere = null;
       r.mem = memory.treeBytes(rows, tm.pid);

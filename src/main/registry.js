@@ -91,9 +91,42 @@ function readTag(tag) {
 // claude's own status goes busy then idle when a turn ends, which is all "finished" needs without tag files;
 // it holds until the next turn starts, and a missing reading (half-written file) changes nothing
 function turnDone(prev, now, done) {
-  if (now === 'busy' || now === 'waiting') return false;
-  if (now === 'idle' && prev === 'busy') return true;
+  if (now === 'busy' || now === 'waiting' || now === 'shell') return false;
+  if (now === 'idle' && (prev === 'busy' || prev === 'shell')) return true;
   return !!done;
+}
+
+// a turn handed to the background ("parked") freezes the interactive entry at busy; the bg job with that id is the live one
+function parkedJob(entry, live) {
+  if (!entry || !entry.parkedJobId) return null;
+  return live.find(e => e !== entry && e.jobId === entry.parkedJobId) || null;
+}
+function liveStatus(entry, live) {
+  if (!entry) return null;
+  if (!entry.parkedJobId) return entry.status;
+  const job = parkedJob(entry, live);
+  return job ? job.status : 'idle';
+}
+
+// the registry is read first when there is one: the tag files lag (Esc fires no Stop hook, and "running" outlives the shells)
+function deskState(tagState, regStatus, done) {
+  if (regStatus) {
+    if (regStatus === 'busy' || regStatus === 'shell') return 'working';
+    if (regStatus === 'waiting') return 'waiting';
+    if (done || tagState === 'done' || tagState === 'running' || tagState === 'failed') return 'finished';
+    return 'idle';
+  }
+  if (tagState === 'working' || tagState === 'running') return 'working';
+  if (tagState === 'asking') return 'waiting';
+  if (tagState === 'done' || tagState === 'failed') return 'finished';
+  return done ? 'finished' : 'idle';
+}
+function glyphFor(tagState, regStatus, done) {
+  const st = deskState(tagState, regStatus, done);
+  if (st === 'working') return regStatus === 'shell' || (!regStatus && tagState === 'running') ? 'running' : 'spin';
+  if (st === 'waiting') return 'asking';
+  if (st === 'finished') return tagState === 'failed' ? 'failed' : 'done';
+  return 'idle';
 }
 
 // Desk names look like myproject-2b; claude-N files belong to plain terminal sessions and are never touched
@@ -126,4 +159,4 @@ function accountFromName(name) {
   return m ? Number(m[1]) : 0;
 }
 
-module.exports = { readRegistry, sessionDirs, refreshDirs, pidAlive, verifyStarts, isLive, forgetPid, readTag, turnDone, cleanupFiles, projectSlug, allocateName, accountFromName, isDeskName };
+module.exports = { readRegistry, sessionDirs, refreshDirs, pidAlive, verifyStarts, isLive, forgetPid, readTag, turnDone, parkedJob, liveStatus, deskState, glyphFor, cleanupFiles, projectSlug, allocateName, accountFromName, isDeskName };

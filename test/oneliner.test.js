@@ -35,3 +35,16 @@ test('clean keeps one plain line with no dashes or quotes', () => {
   assert.strictEqual(clean('Tests \u2014 running'), 'Tests , running');
   assert.ok(clean('a '.repeat(100)).length <= 70);
 });
+
+test('soon relabels just that session after a short wait, once', async () => {
+  const { OneLiner } = require('../src/main/oneliner');
+  const o = new OneLiner({ sessions: () => [] });
+  const got = [];
+  o.tick = async only => { got.push(only); };
+  o.soon('a', 20); o.soon('a', 20); o.soon('b', 20);
+  await new Promise(r => setTimeout(r, 80));
+  assert.deepStrictEqual(got.sort(), ['a', 'b']);
+  o.soon('c', 20); o.forget('c');
+  await new Promise(r => setTimeout(r, 60));
+  assert.deepStrictEqual(got.length, 2, 'forget cancels it');
+});

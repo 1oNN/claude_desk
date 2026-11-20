@@ -8,6 +8,7 @@ const TAIL = 256 * 1024;
 const MODEL = 'claude-haiku-5-5';
 const SYSTEM = 'You label a Claude Code session for a sidebar. Reply with one line, at most 8 words, saying what the session is doing right now, or what it just finished if the last message from Claude ended the turn. Plain words, no quotes, no dashes, no full stop.';
 const BACKOFF_MS = 10 * 60 * 1000;
+const SOON_MS = 20 * 1000;
 
 const clip = (s, n) => { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 3) + '...' : s; };
 
@@ -57,18 +58,29 @@ class OneLiner {
     this.lines = new Map(); // id -> line
     this.pauseUntil = new Map(); // account -> ms
     this.busy = false;
+    this.soonTimers = new Map();
     this.calls = 0; this.costUsd = 0;
   }
 
   start() { if (!this.timer) this.timer = setInterval(() => this.tick().catch(e => this.log('oneliner tick', e.message)), EVERY_MS); }
   line(id) { return this.lines.get(id) || null; }
-  forget(id) { this.seen.delete(id); this.lines.delete(id); }
+  forget(id) { this.seen.delete(id); this.lines.delete(id); clearTimeout(this.soonTimers.get(id)); this.soonTimers.delete(id); }
+  // a turn just ended: relabel this one session shortly, instead of waiting up to EVERY_MS with a mid-turn line
+  soon(id, ms = SOON_MS) {
+    clearTimeout(this.soonTimers.get(id));
+    this.soonTimers.set(id, setTimeout(() => {
+      this.soonTimers.delete(id);
+      if (this.busy) return this.soon(id, ms);
+      this.tick(id).catch(e => this.log('oneliner soon', e.message));
+    }, ms));
+  }
 
-  async tick() {
+  async tick(only) {
     if (this.busy || !C.CLAUDE_EXE) return;
     this.busy = true;
     try {
       for (const s of this.sessions()) {
+        if (only && s.id !== only) continue;
         if ((this.pauseUntil.get(s.account) || 0) > Date.now()) continue;
         let size; try { size = fs.statSync(s.transcript).size; } catch { continue; }
         if (this.seen.get(s.id) === size) continue;
@@ -104,4 +116,4 @@ class OneLiner {
   }
 }
 
-module.exports = { OneLiner, digest, clean, EVERY_MS };
+module.exports = { OneLiner, digest, clean, EVERY_MS, SOON_MS };

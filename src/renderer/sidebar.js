@@ -203,7 +203,7 @@ ${s.label}` : line || null);
       setAcc(acc, f.account || 0);
       text(name, f.name);
       mem.hidden = !it.showMem; text(mem, fmtMem(f.mem));
-      setGlyph(glyph, f.regStatus === 'busy' ? 'spin' : f.regStatus === 'waiting' ? 'asking' : 'idle');
+      setGlyph(glyph, f.regStatus === 'busy' ? 'spin' : f.regStatus === 'shell' ? 'running' : f.regStatus === 'waiting' ? 'asking' : 'idle');
     },
     all(r, it) {
       r.classList.toggle('open', it.open);
