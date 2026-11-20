@@ -1,6 +1,6 @@
 {
   "name": "claude-desk",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "private": true,
   "description": "Run several Claude Code sessions side by side on Windows, across any number of accounts",
   "author": "1oNN",

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.5 (2026-11-20)
+
+- The sidebar trusts Claude Code's own session status over hook files. A session with background shells still running reads working, not finished with a spinner. A turn you stopped with Esc reads idle, not working. A turn Claude Code moved to the background is followed to its background job, so it reads finished when that job ends and shows that job's last ask.
+
 ## 0.2.4 (2026-11-20)
 
 - Rename a session: double click its tab, press F2 on its sidebar row, right click either, or use "Rename this session" in the palette. The label is up to 40 characters and shows in Desk only. Claude Code, its transcript and its status files keep the real name (api-1a and so on), and an empty name goes back to it.
