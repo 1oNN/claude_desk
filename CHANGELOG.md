@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.4 (2026-11-20)
+
+- Rename a session: double click its tab, press F2 on its sidebar row, right click either, or use "Rename this session" in the palette. The label is up to 40 characters and shows in Desk only. Claude Code, its transcript and its status files keep the real name (api-1a and so on), and an empty name goes back to it.
+
 ## 0.2.3 (2026-11-20)
 
 - A session row shows **finished** when a turn ends, until you start the next one, and the last thing you asked it. Both come from files Claude Code already writes (its session status and the transcript), so they cost no tokens and need no setup.
