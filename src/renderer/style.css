@@ -445,6 +445,8 @@ body.typing .glyph svg, body.typing .machine .chip.conn { animation-play-state: 
 .toast { cursor: pointer; }
 .toast.held, .toast:hover { background: var(--surface-2); }
 .toast.error { border-left-color: var(--st-failed); }
+.toast.update { display: flex; align-items: center; gap: 10px; cursor: default; }
+.toast-act { flex: none; }
 
 /* keyboard: rows, tabs and the sash are focusable; the ring shows only when reached by keyboard */
 .machine:focus-visible, .project:focus-visible, .session:focus-visible, .foreign:focus-visible, .allfolders:focus-visible, .pick:focus-visible, .tab:focus-visible, #home .row:focus-visible, .pop .row:focus-visible, .pal .row:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }

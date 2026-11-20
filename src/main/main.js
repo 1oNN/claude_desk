@@ -325,7 +325,7 @@ function snapshot() {
     windows: windowList(), owners: Object.fromEntries(owner), notifier: lastFocused,
     laptop: { status: laptop.status, error: laptop.error, host: laptop.cfg ? laptop.cfg.host : null, mem: lastLaptopPoll ? lastLaptopPoll.mem : null, accounts: laptopAccounts },
     totals, accounts: accs, setup: { ...C.setup(), start }, now: Date.now(),
-    app: { name: C.APP_NAME, version: app.getVersion() },
+    app: { name: C.APP_NAME, version: app.getVersion(), update: updateReady },
   };
 }
 // one stamp per session for the time-in-state column, and the taskbar flash on a transition into waiting or failed while the window is in the background
@@ -797,7 +797,7 @@ function startUpdater() {
   updater.autoDownload = true;
   updater.autoInstallOnAppQuit = true;
   updater.logger = { info: m => log('update', m), warn: m => log('update warn', m), error: m => log('update error', m), debug: () => {} };
-  updater.on('update-downloaded', i => { updateReady = i.version; toast(`Claude Desk ${i.version} is downloaded and installs when you close Desk`); pushSnapshot(); });
+  updater.on('update-downloaded', i => { updateReady = i.version; log('update ready', i.version); send('desk:updateReady', i.version); pushSnapshot(); });
   updater.on('error', e => log('update error', e && e.message));
   const check = () => updater.checkForUpdates().catch(e => log('update check', e.message));
   setTimeout(check, 15000);
@@ -808,10 +808,17 @@ handle('desk:checkUpdate', async () => {
   if (!app.isPackaged) return { current, note: 'Updates run only in an installed build' };
   if (C.SETTINGS.updates === 'off') return { current, note: 'Update checks are off' };
   if (!updater) return { current, note: 'The updater did not start; see desk.log' };
-  if (updateReady) return { current, latest: updateReady, note: `${updateReady} installs when you close Desk` };
+  if (updateReady) return { current, latest: updateReady, ready: updateReady, note: `${updateReady} installs when you close Desk` };
   const r = await updater.checkForUpdates();
   const latest = r && r.updateInfo && r.updateInfo.version;
   return { current, latest, note: latest && latest !== current ? `Downloading ${latest}` : 'Desk is up to date' };
+});
+// quitAndInstall goes through app.quit, so before-quit still saves state and the sessions resume after the installer reopens Desk
+handle('desk:installUpdate', () => {
+  if (!updater || !updateReady) return false;
+  log('update: restart to install', updateReady);
+  setImmediate(() => updater.quitAndInstall(true, true));
+  return true;
 });
 handle('desk:pickPath', async (e, what, defaultPath) => {
   const file = what === 'file';

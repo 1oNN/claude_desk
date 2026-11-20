@@ -31,15 +31,22 @@ const saveUi = () => desk.setUi(ui);
 
 // toasts stack bottom right, newest last. Hover holds one, a click or Esc dismisses, the sixth pushes the oldest out.
 const TOAST_MS = 7000, TOAST_MAX = 5;
-function toast(msg, kind) {
+// a toast with an action has a button and stays until it is used or dismissed
+function toast(msg, kind, action) {
   const box = $('#toasts');
   const live = [...box.children].filter(t => !t.dataset.out);
   while (live.length >= TOAST_MAX) dismissToast(live.shift());
   const t = document.createElement('div');
   t.className = 'toast ' + (kind || '');
   t.textContent = msg;
+  if (action) {
+    const b = document.createElement('button');
+    b.className = 'primary toast-act'; b.textContent = action.label;
+    b.addEventListener('click', e => { e.stopPropagation(); action.run(t); });
+    t.appendChild(b);
+  }
   let left = TOAST_MS, since = 0, timer = 0;
-  const arm = () => { since = Date.now(); timer = setTimeout(() => dismissToast(t), left); };
+  const arm = () => { if (action) return; since = Date.now(); timer = setTimeout(() => dismissToast(t), left); };
   t.addEventListener('mouseenter', () => { clearTimeout(timer); left = Math.max(1500, left - (Date.now() - since)); t.classList.add('held'); });
   t.addEventListener('mouseleave', () => { t.classList.remove('held'); arm(); });
   t.addEventListener('click', () => dismissToast(t));
@@ -56,6 +63,18 @@ function dismissToast(t) {
   a.onfinish = () => t.remove();
 }
 function clearToasts() { for (const t of [...$('#toasts').children]) dismissToast(t); }
+
+// a downloaded update installs on close anyway; this offers it now, and asks first when a turn would be cut off
+let updateToastEl = null;
+function updateToast(v) {
+  if (updateToastEl && updateToastEl.isConnected && !updateToastEl.dataset.out) return;
+  updateToastEl = toast(`Claude Desk ${v} is ready. It installs when you close Desk.`, 'update', { label: 'Restart now', run: () => restartToUpdate() });
+}
+async function restartToUpdate() {
+  const working = (snap ? snap.sessions : []).filter(s => s.status === 'live' && s.state === 'working').length;
+  if (working && !confirm(`${working} session${working > 1 ? 's are' : ' is'} working. Restart now? ${working > 1 ? 'Their turns stop' : 'Its turn stops'}, and the session${working > 1 ? 's' : ''} can be resumed after the update.`)) return;
+  if (!(await desk.installUpdate())) toast('The update is not ready yet', 'error');
+}
 
 // ---------- rendering ----------
 const H = {
@@ -1821,6 +1840,7 @@ function notStartedCopy(s) {
 desk.onExit((id, e) => Terminals.overlay(id, exitCopy(sessionById(id), e), true));
 desk.onStarted(id => Terminals.restarted(id));
 desk.onToast((msg, kind) => toast(msg, kind));
+desk.onUpdateReady(v => updateToast(v));
 
 $('#new-shell').onclick = () => newSession('shell');
 $('#mem-now').onclick = async () => { $('#mem-now').disabled = true; snap = await desk.memoryNow(); renderAll(); $('#mem-now').disabled = false; };

@@ -142,7 +142,7 @@ const Settings = (() => {
       if (!notifyAllowed()) { toast('Windows has not allowed notifications for Desk', 'error'); return; }
       new Notification(su().appName || 'Claude Desk', { body: 'This is what a session needing you looks like.' });
     },
-    'upd-check': async () => { try { const r = await desk.checkUpdate(); toast(r.note || 'Desk is up to date'); } catch (e) { toast(e.message, 'error'); } },
+    'upd-check': async () => { try { const r = await desk.checkUpdate(); if (r.ready) updateToast(r.ready); else toast(r.note || 'Desk is up to date'); } catch (e) { toast(e.message, 'error'); } },
     'open-state': () => desk.openPath('state'),
     'open-log': () => desk.openPath('log'),
     'keys-show': () => keysPop.open(true),

@@ -69,6 +69,7 @@
       { label: '&Documentation', run: () => desk.openUrl(DOCS) },
       { label: '&Release notes', run: () => desk.openUrl(REPO + '/releases') },
       { label: 'Report an &issue', run: () => desk.openUrl(REPO + '/issues') },
+      ...(snap && snap.app && snap.app.update ? [{ label: `Restart to &update to ${snap.app.update}`, run: () => restartToUpdate() }] : []),
       '-',
       { label: 'Open the &log', cmd: 'open-log' },
       { label: 'Open the &state folder', cmd: 'open-state' },
