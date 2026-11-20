@@ -28,10 +28,16 @@ function load() {
   return migrate(s);
 }
 
+// a session's Desk-only label: one line, 40 characters, '' when it is empty or the same as the real name
+function cleanTitle(title, name) {
+  const t = String(title == null ? '' : title).replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40).trim();
+  return t === name ? '' : t;
+}
+
 function shape(state) {
   return {
     extraProjects: state.extraProjects,
-    sessions: state.sessions.map(s => ({ id: s.id, machine: s.machine, project: s.project, account: s.account, kind: s.kind, name: s.name, sid: s.sid, cwd: s.cwd, tag: s.tag, order: s.order })),
+    sessions: state.sessions.map(s => ({ id: s.id, machine: s.machine, project: s.project, account: s.account, kind: s.kind, name: s.name, sid: s.sid, cwd: s.cwd, tag: s.tag, order: s.order, title: s.title })),
     ui: state.ui,
     windows: state.windows,
   };
@@ -88,4 +94,4 @@ function checkProjectName(name, root) {
   return null;
 }
 
-module.exports = { load, save, saveNow, migrate, mergeUi, uiFor, checkProjectName, LAYOUT_KEYS, FILE };
+module.exports = { load, save, saveNow, migrate, mergeUi, uiFor, checkProjectName, cleanTitle, LAYOUT_KEYS, FILE };

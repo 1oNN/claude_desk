@@ -67,6 +67,8 @@ const H = {
   onStop: s => { if (confirm(`Stop ${s.name}? It can be resumed later from the sidebar.`)) desk.stopSession(s.id); },
   onForget: s => { if (confirm(`Forget ${s.name}? Its tag and status files are removed. The transcript stays on disk.`)) forget(s.id); },
   onResume: s => desk.resumeSession(s.id),
+  onRename: s => renameSession(s.id),
+  onMenu: (s, x, y) => { if (window.Menubar) Menubar.popup([{ label: '&Rename', key: 'F2', run: () => renameSession(s.id) }], x, y); },
   onAddProject: async machine => {
     if (machine === 'laptop') { openPalette('folder'); return; }
     await desk.addProject(machine, null);
@@ -641,7 +643,7 @@ function renderTabs() {
     const [dot, glyph, name, slotno] = t.children;
     t.classList.toggle('placed', it.placed);
     t.classList.toggle('away', !!it.away);
-    Dom.attr(t, 'title', it.away ? `${it.s.name} is shown in ${it.away === 1 ? 'the main window' : 'window ' + it.away}. Click to go there, drag it to a pane to move it here` : null);
+    Dom.attr(t, 'title', it.away ? `${it.s.name} is shown in ${it.away === 1 ? 'the main window' : 'window ' + it.away}. Click to go there, drag it to a pane to move it here` : it.s.handle && it.s.handle !== it.s.name ? `${it.s.name}, Claude Code knows it as ${it.s.handle}` : null);
     t.classList.toggle('focused', it.focused);
     if (dot.style.background !== it.colour) dot.style.background = it.colour;
     Sidebar.setGlyph(glyph, Sidebar.glyphOf(it.s));
@@ -649,7 +651,7 @@ function renderTabs() {
     slotno.hidden = !it.slotno; Dom.text(slotno, it.slotno);
     Dom.attr(t, 'aria-selected', it.focused ? 'true' : 'false'); t.tabIndex = it.focused ? 0 : -1;
     Dom.attr(t, 'aria-label', `${it.s.name}, ${STATE_WORD[stateOf(it.s)] || stateOf(it.s)}${it.placed ? (it.slotno ? `, pane ${it.slotno}` : ', shown') : it.away ? `, in window ${it.away}` : ''}`);
-  }, { sig: it => JSON.stringify([it.s.name, it.s.glyph, it.s.status, it.s.state, it.placed, it.away, it.focused, it.slotno, it.colour]) });
+  }, { sig: it => JSON.stringify([it.s.name, it.s.handle, it.s.glyph, it.s.status, it.s.state, it.placed, it.away, it.focused, it.slotno, it.colour]) });
   if (!items.some(it => it.focused)) { const first = tabs.querySelector('.tab'); if (first) first.tabIndex = 0; }
   const f = items.find(it => it.focused);
   if (f) revealTab(f.s.id);
@@ -837,11 +839,12 @@ $('#tabbar').addEventListener('contextmenu', e => {
       rows.push({ label: '&Show in the focused pane', run: () => placeInFocused(id) });
       if (v.n > 1) rows.push({ label: 'Show in &pane', sub: () => Array.from({ length: v.n }, (_, i) => ({ label: `&${i + 1}`, check: () => v.slots[i] === id, run: () => placeInSlot(id, i) })) });
     }
-    rows.push(...moveRows(id), '-');
+    rows.push({ label: '&Rename', run: () => renameSession(id) }, ...moveRows(id), '-');
   }
   rows.push(...newSessionRows());
   Menubar.popup(rows, e.clientX, e.clientY);
 });
+$('#tabs').addEventListener('dblclick', e => { const id = tabOf(e); if (id) renameSession(id); });
 $('#tabs').addEventListener('dragstart', e => { const id = tabOf(e); if (!id) return; dragId = id; e.target.closest('.tab').classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
 $('#tabs').addEventListener('dragend', e => { dragId = null; const t = e.target.closest('.tab'); if (t) t.classList.remove('dragging'); });
 
@@ -1473,6 +1476,7 @@ const COMMANDS = [
   { id: 'addpc', name: 'Add a folder', sub: 'pick any folder on this PC to work in', run: () => desk.addProject('pc', null) },
   { id: 'proj-new', name: 'New project', sub: () => `a new folder in ${(snap && snap.setup && snap.setup.projectsRoot) || 'the projects folder'}`, when: () => !!(snap && snap.setup && snap.setup.projectsRoot), run: () => openPalette('project') },
   { id: 'win-new', name: 'New window', sub: 'another Desk window over the same sessions', run: () => desk.newWindow({ project: ui.current || null }) },
+  { id: 'rename', name: 'Rename this session', sub: () => { const s = sessionById(focusedId()); return s ? `${s.name}, shown in Desk only` : ''; }, when: focusedId, run: () => renameSession(focusedId()) },
   { id: 'pane-new-win', name: 'Move this pane to a new window', sub: 'the session keeps running there', key: 'Ctrl+Shift+M', when: focusedId, run: () => desk.moveSession(focusedId(), 'new') },
   { id: 'win-close', name: 'Close this window', sub: () => snap && snap.windows && snap.windows.length > 1 ? 'its sessions keep running' : 'the last window: this quits Desk', run: () => desk.closeWindow() },
   { id: 'quit', name: 'Exit', sub: 'stops every session and closes every window', run: () => desk.quit() },
@@ -1533,7 +1537,7 @@ function markText(el, text, idx) {
 const sayWhy = s => s.status !== 'live' ? s.status : (s.state === 'working' || s.state === 'waiting') ? s.state : '';
 function palItems(mode) {
   const bySession = s => { const p = projectByKey(s.machine + ':' + s.project); return { p, name: p ? p.name : s.project }; };
-  if (mode === 'folder' || mode === 'project') return [];
+  if (mode === 'folder' || mode === 'project' || mode === 'rename') return [];
   if (mode === 'say') {
     const projs = claudeProjects(), items = [];
     if (projs.length > 1) items.push({ k: 'sa', kind: 'sayall', name: 'All projects', sub: `${projs.length} projects have Claude sessions`, on: projs.every(p => PAL.sayTo.has(p.key)), hay: '' });
@@ -1554,12 +1558,12 @@ function palItems(mode) {
   const attnFirst = (x, y) => (ATTN(y) - ATTN(x)) || (x.machine + x.project).localeCompare(y.machine + y.project) || (x.order - y.order);
   const sess = (snap ? snap.sessions.slice().sort(attnFirst) : []).map(s => {
     const b = bySession(s);
-    return { k: 's:' + s.id, kind: 'sess', name: s.name, sub: b.name + (s.machine === 'laptop' ? ' (laptop)' : ''), rt: STATE_WORD[stateOf(s)] || stateOf(s), acc: s.account, hay: s.name + ' ' + b.name, run: () => H.onSession(s) };
+    return { k: 's:' + s.id, kind: 'sess', name: s.name, sub: b.name + (s.machine === 'laptop' ? ' (laptop)' : ''), rt: STATE_WORD[stateOf(s)] || stateOf(s), acc: s.account, hay: s.name + ' ' + (s.handle && s.handle !== s.name ? s.handle + ' ' : '') + b.name, run: () => H.onSession(s) };
   });
   return mode === 'commands' ? cmds.concat(projs, sess) : sess.concat(projs);
 }
 const svgUse = id => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('class', 'g'); const u = document.createElementNS('http://www.w3.org/2000/svg', 'use'); u.setAttribute('href', '#' + id); s.appendChild(u); return s; };
-const TYPED = m => m === 'say' || m === 'folder' || m === 'project';
+const TYPED = m => m === 'say' || m === 'folder' || m === 'project' || m === 'rename';
 function palMode() { const raw = $('#pal-input').value; return TYPED(PAL.mode) ? PAL.mode : raw.startsWith('>') ? 'commands' : PAL.mode; }
 function renderPalette() {
   const pal = $('#palette');
@@ -1568,7 +1572,7 @@ function renderPalette() {
   const q = TYPED(mode) ? '' : $('#pal-input').value.replace(/^>/, '').trim();
   let items = palItems(mode);
   if (q) items = items.map((it, i) => ({ it, m: fuzzy(it.hay, q), i })).filter(x => x.m).sort((x, y) => (y.m.score - x.m.score) || (x.i - y.i)).map(x => Object.assign(x.it, { idx: x.m.idx }));
-  if (!items.length) items = [{ k: 'none', kind: 'none', name: mode === 'say' ? 'No Claude session in any project. Start one with the session button.' : mode === 'folder' ? 'Type the absolute path of a folder on the laptop, then press Enter' : mode === 'project' ? `A new folder in ${(snap.setup && snap.setup.projectsRoot) || 'the projects folder'}` : 'Nothing matches' }];
+  if (!items.length) items = [{ k: 'none', kind: 'none', name: mode === 'say' ? 'No Claude session in any project. Start one with the session button.' : mode === 'folder' ? 'Type the absolute path of a folder on the laptop, then press Enter' : mode === 'project' ? `A new folder in ${(snap.setup && snap.setup.projectsRoot) || 'the projects folder'}` : mode === 'rename' ? renameNote() : 'Nothing matches' }];
   PAL.items = items;
   PAL.sel = Math.min(PAL.sel, items.length - 1);
   const list = $('#pal-list');
@@ -1600,6 +1604,7 @@ function renderPalette() {
   const add = (txt, cls) => foot.appendChild(Dom.h('span', cls, txt));
   if (mode === 'folder') { add('Enter adds the folder'); add('Esc closes'); }
   else if (mode === 'project') { if (PAL.err) add(PAL.err, 'warn'); else add('Enter makes the folder and opens it'); add('Esc closes'); }
+  else if (mode === 'rename') { if (PAL.err) add(PAL.err, 'warn'); else add('Enter renames it'); add('Empty goes back to its own name'); add('Esc closes'); }
   else if (mode === 'say') {
     const ticked = items.filter(it => it.kind === 'sayproj' && it.on).length;
     const n = items.filter(it => it.will).length, m = items.filter(it => it.kind === 'say').length;
@@ -1628,10 +1633,22 @@ function openPalette(mode) {
   if (pal.hidden) { PAL.back = document.activeElement; pal.hidden = false; inp.value = ''; }
   else if (PAL.mode !== mode) inp.value = '';
   PAL.mode = mode; PAL.sel = 0; PAL.err = '';
-  Dom.text($('#pal-mode'), mode === 'say' ? 'Say' : mode === 'jump' ? 'Go to' : mode === 'folder' ? 'Add folder' : mode === 'project' ? 'New project' : 'Command');
-  inp.placeholder = mode === 'say' ? 'Message for the idle Claude sessions in the ticked projects' : mode === 'jump' ? 'Session or project name' : mode === 'folder' ? '/home/you/project' : mode === 'project' ? 'Folder name' : 'Command, project or session';
+  Dom.text($('#pal-mode'), mode === 'say' ? 'Say' : mode === 'jump' ? 'Go to' : mode === 'folder' ? 'Add folder' : mode === 'project' ? 'New project' : mode === 'rename' ? 'Rename' : 'Command');
+  inp.placeholder = mode === 'say' ? 'Message for the idle Claude sessions in the ticked projects' : mode === 'jump' ? 'Session or project name' : mode === 'folder' ? '/home/you/project' : mode === 'project' ? 'Folder name' : mode === 'rename' ? 'New name' : 'Command, project or session';
+  if (mode === 'rename') { const s = sessionById(PAL.renameId); inp.value = s ? s.name : ''; }
   renderPalette();
   inp.focus();
+  if (mode === 'rename') inp.select();
+}
+function renameSession(id) {
+  if (!sessionById(id)) return;
+  PAL.renameId = id;
+  if (PAL.mode === 'rename') closePalette();
+  openPalette('rename');
+}
+function renameNote() {
+  const s = sessionById(PAL.renameId);
+  return s ? `Shown in Desk only. Claude Code, its transcript and its status files keep ${s.handle || s.name}.` : 'That session is gone';
 }
 function closePalette() {
   const pal = $('#palette');
@@ -1652,6 +1669,7 @@ function palRun() {
   if (palMode() === 'say') { sendSay(); return; }
   if (palMode() === 'folder') { addLaptopFolder(); return; }
   if (palMode() === 'project') { makeProject(); return; }
+  if (palMode() === 'rename') { doRename(); return; }
   const it = PAL.items[PAL.sel];
   if (!it || !it.run) return;
   closePalette();
@@ -1663,6 +1681,11 @@ async function makeProject() {
   closePalette();
   // the snapshot that lists the new folder may land after this reply; showProject only needs the key
   if (r && r.key) showProject(r.key);
+}
+async function doRename() {
+  const r = await desk.renameSession(PAL.renameId, $('#pal-input').value);
+  if (r && r.error) { PAL.err = r.error; renderPalette(); return; }
+  closePalette();
 }
 async function addLaptopFolder() {
   const dir = $('#pal-input').value.trim();

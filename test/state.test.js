@@ -59,3 +59,22 @@ test('a new project name is one plain folder that does not exist yet', () => {
   for (const bad of ['', '  ', '..', '..\\x', 'a/b', 'con', 'COM1', 'nul.txt', 'x.', 'a:b', 'taken']) assert.ok(S.checkProjectName(bad, root), bad);
   assert.match(S.checkProjectName('ok', null), /projects folder/);
 });
+
+test('a rename is one trimmed line of at most 40 characters', () => {
+  assert.strictEqual(S.cleanTitle('  webhook\nretries\t ', 'api-1a'), 'webhook retries');
+  assert.strictEqual(S.cleanTitle('x'.repeat(60), 'api-1a').length, 40);
+  assert.strictEqual(S.cleanTitle('', 'api-1a'), '');
+  assert.strictEqual(S.cleanTitle(null, 'api-1a'), '');
+});
+
+test('renaming to the real name clears the label', () => {
+  assert.strictEqual(S.cleanTitle(' api-1a ', 'api-1a'), '');
+});
+
+test('a renamed session keeps its real name on disk next to the label', async () => {
+  const s = S.migrate({ ui: {}, extraProjects: [], sessions: [{ id: 'i', machine: 'pc', project: 'F:\\a', account: 1, kind: 'claude', name: 'a-1a', sid: 's', cwd: 'F:\\a', tag: 't', order: 1, title: 'webhook retries' }] });
+  S.saveNow(s);
+  const back = JSON.parse(fs.readFileSync(S.FILE, 'utf8')).sessions[0];
+  assert.strictEqual(back.name, 'a-1a');
+  assert.strictEqual(back.title, 'webhook retries');
+});
