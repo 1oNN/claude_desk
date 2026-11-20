@@ -173,7 +173,7 @@ const Sidebar = (() => {
       setAcc(acc, s.account || 0);
       attr(acc, 'title', s.account ? (typeof accName === 'function' && s.machine === 'pc' ? accName(s.account) : `claude-${s.account}`) : 'shell');
       text(name, s.name);
-      attr(name, 'title', s.name);
+      attr(name, 'title', s.handle && s.handle !== s.name ? `${s.name}\nClaude Code knows it as ${s.handle}` : s.name);
       setGlyph(st.firstChild, glyphOf(s));
       const word = s.status === 'elsewhere' && s.elsewhere ? `elsewhere as ${s.elsewhere}` : it.away ? `in window ${it.away}` : (WORD[it.state] || it.state);
       r.classList.toggle('away', !!it.away);
@@ -301,6 +301,16 @@ ${s.label}` : line || null);
     }
   });
 
+  el.addEventListener('contextmenu', e => {
+    const { snap, H } = last;
+    const row = e.target.closest('[data-key^="s:"]');
+    if (!row || !snap || Dom.isLeaving(row)) return;
+    const s = snap.sessions.find(x => x.id === row.dataset.key.slice(2));
+    if (!s) return;
+    e.preventDefault();
+    H.onMenu(s, e.clientX, e.clientY);
+  });
+
   // keyboard: Enter or Space acts like a click on the row, Up and Down walk the rows, Right reaches the row's buttons (or expands), Left goes back (or collapses), Delete stops or forgets a session
   el.addEventListener('keydown', e => {
     const { snap, H } = last;
@@ -333,6 +343,7 @@ ${s.label}` : line || null);
       else if (kind === 'all' && row.getAttribute('aria-expanded') === 'true') H.onPicker(id, false);
       return;
     }
+    if (e.key === 'F2' && kind === 's' && onRow) { const s = snap.sessions.find(x => x.id === id); if (s) { e.preventDefault(); H.onRename(s); } return; }
     if (e.key === 'Delete' && kind === 's' && onRow) { const x = row.querySelector('[data-act="stop"], [data-act="forget"]'); if (x && !x.hidden) { e.preventDefault(); x.click(); } }
   });
 

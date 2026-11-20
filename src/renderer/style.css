@@ -125,6 +125,7 @@ button.primary:hover { filter: brightness(1.1); }
 .session:hover { background: var(--surface-2); }
 .session.focused { background: var(--surface-sel); }
 .session .acc { grid-row: 1 / span 2; width: 18px; height: 18px; border-radius: var(--r-1); background: var(--acc); color: var(--acc-chip-ink); font: 600 var(--fs-11)/16px var(--font-ui); text-align: center; border: 1px solid var(--acc-strong); }
+.tab .tname { max-width: 24ch; overflow: hidden; text-overflow: ellipsis; }
 .session .sname { grid-row: 1; grid-column: 2; font-family: var(--font-mono); font-size: var(--fs-13); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .session.placed .sname { color: var(--ink); }
 .session.away .sname { color: var(--ink-3); font-style: italic; }

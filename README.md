@@ -284,12 +284,13 @@ Ctrl+/ or F1 shows the full list in the app.
 | Ctrl+wheel | zoom whatever is under the pointer |
 | Ctrl+, | settings |
 | F11 | full screen |
+| F2 on a sidebar row, double click a tab | rename a session (the label shows in Desk only; Claude Code keeps its name) |
 | Esc | close a menu or the palette, clear the toasts |
 
 Ctrl+C copies when text is selected and otherwise goes to the terminal. Ctrl+V or right click
 pastes; right click copies instead when text is selected. Ctrl+click opens a link. In the
-sidebar, the arrows move, Enter opens, Right reaches a row's buttons and Delete stops a
-session.
+sidebar, the arrows move, Enter opens, Right reaches a row's buttons, Delete stops a
+session and F2 renames it.
 
 ### Settings
 

@@ -323,7 +323,8 @@ function snapshot() {
   const accs = readAccounts(), bySid = accountsCache.sid;
   // a Claude session's context and model, from its status line; dropped once it has not reported for 5 minutes
   const useOf = s => { const u = s.kind !== 'shell' && s.sid && bySid[s.sid]; return u && Date.now() / 1000 - u.t < 300 ? { ctx: u.ctx, model: u.model } : null; };
-  const sessions = state.sessions.map(s => ({ ...s, ...rt(s.id), use: useOf(s) }));
+  // the renderer only shows names; handle is the real one Claude Code, tmux and cleanup know it by
+  const sessions = state.sessions.map(s => ({ ...s, ...rt(s.id), use: useOf(s), name: s.title || s.name, handle: s.name }));
   const totals = { pc: 0, laptop: 0 };
   for (const s of sessions) totals[s.machine] += s.mem || 0;
   return {
@@ -679,6 +680,15 @@ handle('desk:resume', (_e, id) => { const s = byId(id); if (s) launch(s, { resum
 handle('desk:stop', (_e, id) => stopSession(id));
 handle('desk:forget', (_e, id) => forgetSession(id));
 handle('desk:close', (_e, id, opts) => closeSession(id, opts || {}));
+// a Desk-only label: the real name stays, since the registry match, the account, tmux and cleanup all go by it
+handle('desk:rename', (_e, id, title) => {
+  const s = byId(id); if (!s) return { error: 'That session is gone' };
+  const t = stateMod.cleanTitle(title, s.name);
+  if (t) s.title = t; else delete s.title;
+  stateMod.save(state); pushSnapshot();
+  log('rename', s.name, t || '(back to its own name)');
+  return { name: t || s.name };
+});
 handle('desk:attach', async (e, id, cols, rows) => {
   const s = byId(id); if (!s) return { replay: '' };
   // one window shows a session at a time, so two never fight over its size; the one that had it lets go

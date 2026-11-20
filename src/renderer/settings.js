@@ -25,7 +25,8 @@ const KEYS_LIST = [
   ['Alt', 'the menus, when no terminal has focus'],
   ['F11', 'full screen'],
   ['Esc', 'close a menu, the palette or the keys card, or clear the toasts'],
-  ['In the sidebar', 'Up and Down move, Enter opens, Right reaches a row\'s buttons or expands, Left collapses, Delete stops'],
+  ['In the sidebar', 'Up and Down move, Enter opens, Right reaches a row\'s buttons or expands, Left collapses, Delete stops, F2 renames'],
+  ['Double click a tab', 'rename that session, in Desk only'],
 ];
 function keysList() {
   const dl = Dom.h('dl', 'keys');
