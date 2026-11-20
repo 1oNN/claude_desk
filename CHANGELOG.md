@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.6 (2026-11-20)
+
+- When an update has downloaded, its notice stays on screen with a Restart now button instead of going after a few seconds. Help shows "Restart to update" while one waits, and Settings, Check now, brings the notice back. If a session is mid turn, Desk asks before restarting. Closing Desk still installs the update as before. You see the button from the update after this one.
+
 ## 0.2.5 (2026-11-20)
 
 - The sidebar trusts Claude Code's own session status over hook files. A session with background shells still running reads working, not finished with a spinner. A turn you stopped with Esc reads idle, not working. A turn Claude Code moved to the background is followed to its background job, so it reads finished when that job ends and shows that job's last ask.
