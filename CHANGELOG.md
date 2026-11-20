@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.3 (2026-11-20)
 
 - A session row shows **finished** when a turn ends, until you start the next one, and the last thing you asked it. Both come from files Claude Code already writes (its session status and the transcript), so they cost no tokens and need no setup.
 - Desk no longer picks up a `claude.exe` from a relative `PATH` entry such as `.`, which would resolve inside whatever folder it was started from.
