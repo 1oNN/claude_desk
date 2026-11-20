@@ -14,13 +14,17 @@
 
 </div>
 
-Your projects are listed on the left, real `claude` terminals sit in tabs in the middle, and
-you can show one to eight panes at once, in as many windows as you like. Sessions can belong
-to different Claude accounts. Desk starts, shows, hides, stops and resumes them. It does not
-wrap the chat, edit your files or show git. The terminal is Claude Code itself; Desk puts a
-frame around it.
+Every session in every project says whether it is working, needs you, finished or idle, with
+the last thing you asked it underneath. When one stops to ask you something you get a Windows
+notification and a taskbar flash, so you can leave five running and only look when one wants
+you. Sessions can belong to different Claude accounts, and the Usage page shows every
+account's limits side by side.
 
-![Three accounts across three projects: a session turns to needs you, then the Usage page shows each account's limits and one of them climbing](docs/img/demo-readme.gif)
+The terminals are Claude Code itself, in tabs and one to eight panes, in as many windows as
+you like. Desk does not wrap the chat, edit your files or show git; it puts a frame around the
+real `claude`.
+
+![Three accounts across three projects: web-3a finishes its turn, web-1a starts a new one, the Usage page shows each account's limits, then api-1a stops to ask](docs/img/demo-readme.gif)
 
 Claude Desk is an independent project. It is not made by or affiliated with Anthropic.
 
@@ -64,7 +68,7 @@ that app. Desk is for running several accounts at once and watching their limits
 The sidebar holds every project you work in, each as its own section, so one window covers all
 of them.
 
-![Three projects in the sidebar: two sessions working, two that need you, and api open in three panes](docs/img/overview-1600.png)
+![Three projects in the sidebar, each session with its state and the last thing asked of it: two working, one needs you, one finished, one idle, and api open in three panes](docs/img/overview-1600.png)
 
 - **Where projects come from.** Desk finds your projects folder (`~\Projects` and a few usual
   names, or `DESK_PROJECTS`). A project gets a section once it has a session or you add it. **All folders**
@@ -84,9 +88,9 @@ of them.
   section under the PC's.
 
 Ctrl+P jumps to any project or session by name, and Ctrl+B hides the sidebar when you want the
-room. The picture at the top shows three projects (`api`, `docs`, `web`) with `api` open in
-three panes. Two sessions are working and two need you, and the badge on `api` and `docs`
-counts the ones waiting.
+room. The picture above shows three projects (`api`, `docs`, `web`) with `api` open in three
+shell panes. `api-1a` and `web-3a` are working, `api-2a` needs you, `docs-2a` has finished
+and `web-1a` is idle; the badges on `api` and `docs` count the ones waiting on you.
 
 ## Usage limits
 
@@ -150,9 +154,6 @@ session is resumed after Desk was closed in the middle of a turn, an optional on
 Usage limits (five-hour and seven-day, or cost this month for API-key accounts) come from the
 status line Desk gives its own sessions, so they cost no tokens and make no network calls. If
 an account already has its own `statusLine`, Desk leaves it alone and shows no usage for it.
-The Usage page (the gauge in the activity bar, or View > Usage) lists every account with both
-limits and when they reset, then each live Claude session on it with its model and how full its
-context is.
 
 </details>
 
