@@ -33,7 +33,9 @@ Claude Desk is an independent project. It is not made by or affiliated with Anth
 Running four or five Claude Code sessions means four or five terminal windows, a login per
 account, and no way to see at a glance which one is waiting for you. Desk keeps them in one
 place, marks the ones that need you, and gives each account its own config folder so logins
-never mix. It adds nothing to your prompts unless you ask it to, so it costs no tokens.
+never mix. It adds nothing to your prompts unless you ask it to, so it costs no tokens. It does
+not save any either, and it does not save memory: Desk itself is about 510 MB, and a Claude
+session is the same size in Desk as in a terminal. Memory, under [How it works](#how-it-works), has the numbers.
 
 ## Why not just VS Code?
 
@@ -79,7 +81,8 @@ of them.
   away. Claude sessions started in that folder outside Desk are listed too, marked "not Desk".
 - **Sessions under it.** Each row has its account number, a state (working, needs you,
   finished, idle), the last thing you asked it, and Resume or Stop. Finished means the turn
-  ended and you have not started the next one. Both come from files Claude Code already
+  ended and you have not started the next one; a turn whose shells still run in the background
+  counts as working. Both come from files Claude Code already
   writes, so they cost no tokens.
 - **Its own panes.** Clicking a project shows that project's tabs and panes, one to eight at
   once. Every project keeps its own layout, so switching from `api` to `web` and back puts the
@@ -256,7 +259,7 @@ focus; inside a terminal Alt stays with Claude Code.
 | Edit | copy, paste, select all, say one message to the idle Claude sessions in the projects you tick |
 | View | command palette, go to, home, projects, needs you, sidebar, panes 1-8, zoom, theme, full screen |
 | Window | new window, move pane to a new window or another window, the window list |
-| Help | welcome, keys, these docs, release notes, report an issue, the log and the state folder |
+| Help | welcome, keys, these docs, release notes, report an issue, the log and the state folder, restart to update when one is ready |
 
 ### Closing a session
 
@@ -342,8 +345,10 @@ An environment variable wins over the saved value:
 ## Updates
 
 The installed app checks GitHub Releases a little after it starts and every six hours after
-that. A new version downloads in the background and installs when you close Desk. Settings,
-Updates shows your version, has a Check now button and can turn the check off. A copy run
+that. A new version downloads in the background and installs when you close Desk. When one is
+ready a notice says so with a Restart now button, and Help lists Restart to update; if a session
+is still working, Desk asks first. Settings, Updates shows your version, has a Check now button
+and can turn the check off. A copy run
 from source never updates itself; use `git pull`.
 
 ## Privacy
