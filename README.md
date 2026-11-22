@@ -87,6 +87,11 @@ of them.
 - **Its own panes.** Clicking a project shows that project's tabs and panes, one to eight at
   once. Every project keeps its own layout, so switching from `api` to `web` and back puts the
   panes where you left them.
+- **Your order.** Drag a project up or down, or a session within its project, and the order
+  is saved. Alt+Up and Alt+Down do the same from the keyboard.
+- **Stack view.** The Stack button (Ctrl+Shift+S) swaps the project's grid for one column of
+  panes, up to eight, holding sessions from any project. Clicking a session on the left adds
+  it, and the stack keeps the sidebar's order. Turning it off brings the project grid back.
 - **More than one machine.** With a remote machine set up, its projects sit in their own
   section under the PC's.
 
@@ -281,6 +286,7 @@ Ctrl+/ or F1 shows the full list in the app.
 | Ctrl+Shift+M | move the focused pane to a new window |
 | Ctrl+1 to 8, Ctrl+Shift+1 to 8 | focus a pane, set the number of panes |
 | Ctrl+Tab, Ctrl+Shift+Tab | next or previous session in the pane |
+| Ctrl+Shift+S | stack view: sessions from every project in one column |
 | Ctrl+B, Ctrl+Shift+B | sidebar, whole left panel |
 | Ctrl+=, Ctrl+-, Ctrl+0 | zoom the focused terminal |
 | Ctrl+Shift+=, Ctrl+Shift+-, Ctrl+Shift+0 | zoom the whole window |
@@ -292,8 +298,8 @@ Ctrl+/ or F1 shows the full list in the app.
 
 Ctrl+C copies when text is selected and otherwise goes to the terminal. Ctrl+V or right click
 pastes; right click copies instead when text is selected. Ctrl+click opens a link. In the
-sidebar, the arrows move, Enter opens, Right reaches a row's buttons, Delete stops a
-session and F2 renames it.
+sidebar, the arrows move, Enter opens, Right reaches a row's buttons, Alt+Up and
+Alt+Down reorder, Delete stops a session and F2 renames it.
 
 ### Settings
 
