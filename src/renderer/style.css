@@ -208,6 +208,9 @@ body.typing .glyph svg, body.typing .machine .chip.conn { animation-play-state: 
 .tab .slotno { font-size: 10px; color: var(--accent); }
 .tab .glyph { width: 18px; text-align: center; }
 .tab.dragging { opacity: .4; }
+#sidebar .dragging { opacity: .4; }
+#sidebar .drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+#sidebar .drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
 .tab.placing { animation: tab-place var(--t-place) var(--ease-standard); }
 @keyframes tab-place { from { background: var(--accent-soft); } }
 #tab-actions { display: flex; align-items: center; gap: 2px; padding: 0 var(--sp-3); position: relative; }

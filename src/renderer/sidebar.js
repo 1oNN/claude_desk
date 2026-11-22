@@ -76,7 +76,7 @@ const Sidebar = (() => {
       return r;
     },
     project() {
-      const r = h('div', 'project'); focusable(r);
+      const r = h('div', 'project'); focusable(r); r.draggable = true;
       const chev = h('button', 'ibtn chev'); chev.appendChild(svgUse('#i-chev')); chev.dataset.act = 'toggle'; chev.title = 'Collapse'; chev.tabIndex = -1; chev.type = 'button'; r.appendChild(chev);
       r.appendChild(h('span', 'pname'));
       r.appendChild(h('span', 'count'));
@@ -86,7 +86,7 @@ const Sidebar = (() => {
       return r;
     },
     session() {
-      const r = h('div', 'session'); focusable(r);
+      const r = h('div', 'session'); focusable(r); r.draggable = true;
       r.appendChild(accChip());
       r.appendChild(h('span', 'sname'));
       const st = h('span', 'state'); st.appendChild(glyphEl()); st.appendChild(h('span', 'word')); r.appendChild(st);
@@ -268,7 +268,75 @@ ${s.label}` : line || null);
     if (!force && sig === lastSig) return;
     lastSig = sig;
     Dom.keyed(el, items(snap, ui), it => it.k, it => create[it.t](it), (r, it) => update[it.t](r, it), { sig: it => it.t + SIG[it.t](it), force });
+    if (refocus) { const r = el.querySelector(`[data-key="${CSS.escape(refocus)}"]`); if (r && document.activeElement !== r) r.focus(); }
   }
+
+  // folders move within their machine and chats within their folder; the whole new order goes to H.onReorder
+  let drag = null, refocus = null;
+  function groupOf(key) {
+    const { snap } = last;
+    if (!snap || !key) return null;
+    const kind = key.slice(0, key.indexOf(':')), id = key.slice(kind.length + 1);
+    if (kind === 'p') {
+      const p = snap.projects.find(x => x.key === id);
+      return p && { kind: 'projects', g: 'p:' + p.machine, machine: p.machine, id: p.dir, list: snap.projects.filter(x => x.machine === p.machine).map(x => x.dir) };
+    }
+    if (kind === 's') {
+      const s = snap.sessions.find(x => x.id === id);
+      return s && { kind: 'sessions', g: 's:' + s.machine + ':' + s.project, id: s.id, list: snap.sessions.filter(x => x.machine === s.machine && x.project === s.project).sort((a, b) => a.order - b.order).map(x => x.id) };
+    }
+    return null;
+  }
+  function moved(list, id, target, after) {
+    const out = list.filter(x => x !== id), i = out.indexOf(target);
+    if (i < 0) return null;
+    out.splice(i + (after ? 1 : 0), 0, id);
+    return out.join('\n') === list.join('\n') ? null : out;
+  }
+  function sendOrder(g, list) {
+    last.H.onReorder(g.kind === 'projects' ? { kind: 'projects', machine: g.machine, dirs: list } : { kind: 'sessions', ids: list });
+  }
+  const unmark = () => { for (const r of el.querySelectorAll('.drop-before, .drop-after')) r.classList.remove('drop-before', 'drop-after'); };
+  const dropAt = e => {
+    const row = e.target.closest && e.target.closest('[data-key^="p:"], [data-key^="s:"]');
+    const t = row && !Dom.isLeaving(row) && groupOf(row.dataset.key);
+    if (!drag || !t || t.g !== drag.g || t.id === drag.id) return null;
+    const b = row.getBoundingClientRect();
+    return { row, t, after: e.clientY > b.top + b.height / 2 };
+  };
+  el.addEventListener('dragstart', e => {
+    const row = e.target.closest && e.target.closest('[data-key^="p:"], [data-key^="s:"]');
+    drag = row && groupOf(row.dataset.key);
+    if (!drag) return;
+    row.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', row.dataset.key);
+    // a chat dragged out of the list can also be dropped on a pane
+    if (drag.kind === 'sessions') last.H.onDrag(drag.id);
+  });
+  el.addEventListener('dragover', e => {
+    const d = dropAt(e);
+    unmark();
+    if (!d) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    d.row.classList.add(d.after ? 'drop-after' : 'drop-before');
+  });
+  el.addEventListener('dragleave', e => { if (!el.contains(e.relatedTarget)) unmark(); });
+  el.addEventListener('drop', e => {
+    const d = dropAt(e);
+    unmark();
+    if (!d) return;
+    e.preventDefault();
+    const list = moved(drag.list, drag.id, d.t.id, d.after);
+    if (list) sendOrder(drag, list);
+  });
+  el.addEventListener('dragend', () => {
+    unmark();
+    for (const r of el.querySelectorAll('.dragging')) r.classList.remove('dragging');
+    if (drag && drag.kind === 'sessions') last.H.onDrag(null);
+    drag = null;
+  });
 
   // clicks are delegated and read the current snapshot, so a row never holds a stale session object
   el.addEventListener('click', e => {
@@ -320,6 +388,19 @@ ${s.label}` : line || null);
     const key = row.dataset.key, kind = key.slice(0, key.indexOf(':')), id = key.slice(kind.length + 1);
     const buttons = () => [...row.querySelectorAll('button')].filter(b => !b.hidden && !b.closest('[hidden]'));
     if ((e.key === 'Enter' || e.key === ' ') && onRow) { e.preventDefault(); row.click(); return; }
+    // Alt+Up and Alt+Down step a folder or chat past the next one shown in its group
+    if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && onRow && (kind === 'p' || kind === 's')) {
+      e.preventDefault();
+      const g = groupOf(key); if (!g) return;
+      const down = e.key === 'ArrowDown';
+      const shown = [...el.querySelectorAll(`[data-key^="${kind}:"]`)].filter(r => !Dom.isLeaving(r)).map(r => groupOf(r.dataset.key)).filter(x => x && x.g === g.g).map(x => x.id);
+      const other = shown[shown.indexOf(g.id) + (down ? 1 : -1)];
+      const list = other != null && moved(g.list, g.id, other, down);
+      if (!list) return;
+      refocus = key; setTimeout(() => { if (refocus === key) refocus = null; }, 2000);
+      sendOrder(g, list);
+      return;
+    }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       const rows = [...el.querySelectorAll('[data-key][tabindex="0"]')];

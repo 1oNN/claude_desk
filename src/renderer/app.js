@@ -121,6 +121,7 @@ const H = {
   onToggle: (key, open) => { ui.expanded[key] = open; saveUi(); renderSidebar(); },
   onSession: s => { const w = awayWin(s.id); if (w) { desk.focusWindow(w.wid); return; } if (ui.stack) { stackAdd(s.id); return; } if (s.machine + ':' + s.project !== ui.current) showProject(s.machine + ':' + s.project); placeInFocused(s.id); },
   onReorder: async o => { const r = await desk.reorder(o); if (r && r.error) toast(r.error, 'error'); },
+  onDrag: id => { dragId = id; },
   awayN: s => { const w = awayWin(s.id); return w ? w.n : 0; },
   onNewSession: p => { showProject(p.key); newSession('claude'); },
   onStop: s => { if (confirm(`Stop ${s.name}? It can be resumed later from the sidebar.`)) desk.stopSession(s.id); },
