@@ -1098,6 +1098,7 @@ function toggleMax(i) {
     const r = v.restore, id = v.slots[0];
     v.restore = null; v.slots = r.slots.slice(); v.n = r.n; v.focus = r.focus;
     if (id && !v.slots.slice(0, v.n).includes(id)) v.slots[v.focus] = id;
+    if (ui.stack) Stack.sort(v, Stack.rank(snap));
   } else if (v.n > 1) {
     const id = v.slots[i];
     v.restore = { n: v.n, slots: v.slots.slice(), focus: i };
@@ -1508,6 +1509,8 @@ async function newSession(kind, pick, slotAt) {
   placeInSlot(s.id, slot);
 }
 function emptyPane(i) {
+  // the stack has no empty panes in the middle, so the pane goes with its session
+  if (ui.stack && curView().n > 1) return closePane(i);
   curView().slots[i] = null;
   saveUi(); renderSlots(); renderTabs(); renderSidebar(true);
 }
@@ -1829,7 +1832,8 @@ async function init() {
   // xterm measures the cell once when a terminal opens, so the font has to be in before the first one
   try { await document.fonts.load(`${ui.termFont}px "Cascadia Mono"`); } catch { /* falls back to Consolas */ }
   if (ui.current && !projectByKey(ui.current)) ui.current = null;
-  if (ui.stack) { Stack.sort(curView(), Stack.rank(snap)); setCurrentFromFocus(); }
+  if (ui.views[STACK]) { Stack.prune(view(STACK), snap); Stack.sort(view(STACK), Stack.rank(snap)); }
+  if (ui.stack) setCurrentFromFocus();
   applyTheme();
   applyAccountColours();
   renderAll();
@@ -1844,11 +1848,12 @@ desk.onSnapshot(s => {
   applyAccountColours();
   if (ui.current && !projectByKey(ui.current)) { ui.current = null; renderSlots(); }
   // the stack keeps sidebar order when a folder or chat is dragged, here or in another window
-  if (ui.stack) {
-    const v = curView(), before = v.slots.join();
+  if (ui.views[STACK]) {
+    const v = view(STACK), before = JSON.stringify([v.n, v.slots, v.restore]);
+    Stack.prune(v, snap);
     Stack.sort(v, Stack.rank(snap));
-    if (!ui.current) setCurrentFromFocus();
-    if (v.slots.join() !== before) { saveUi(); renderSlots(); }
+    if (ui.stack && !ui.current) setCurrentFromFocus();
+    if (JSON.stringify([v.n, v.slots, v.restore]) !== before) { saveUi(); if (ui.stack) renderSlots(); }
   }
   renderAll();
   notifyTransitions();

@@ -74,3 +74,19 @@ test('removing the last chat leaves one empty pane', () => {
 test('a chat that is gone ranks after every known one', () => {
   assert.ok(rank('gone') > rank('b1'));
 });
+
+test('removing a chat from a maximised stack takes it out of the restore list too', () => {
+  const v = { n: 1, slots: ['a1', 'a2', 'b1', ...Array(5).fill(null)], focus: 0, stack: true, restore: { n: 3, slots: ['a1', 'a2', 'b1', ...Array(5).fill(null)], focus: 2 } };
+  Stack.removeFrom(v, 'a2');
+  assert.deepStrictEqual(v.restore.slots.slice(0, v.restore.n), ['a1', 'b1']);
+  assert.strictEqual(v.restore.slots[v.restore.focus], 'b1');
+  assert.strictEqual(v.restore.slots.length, 8);
+});
+
+test('prune drops chats the snapshot no longer has and keeps the rest in place', () => {
+  const v = { n: 3, slots: ['a1', 'gone', 'b1', ...Array(5).fill(null)], focus: 2, stack: true };
+  assert.strictEqual(Stack.prune(v, snap), true);
+  assert.deepStrictEqual(shown(v), ['a1', 'b1']);
+  assert.strictEqual(v.slots[v.focus], 'b1');
+  assert.strictEqual(Stack.prune(v, snap), false);
+});

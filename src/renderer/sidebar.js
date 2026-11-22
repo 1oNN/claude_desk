@@ -268,7 +268,11 @@ ${s.label}` : line || null);
     if (!force && sig === lastSig) return;
     lastSig = sig;
     Dom.keyed(el, items(snap, ui), it => it.k, it => create[it.t](it), (r, it) => update[it.t](r, it), { sig: it => it.t + SIG[it.t](it), force });
-    if (refocus) { const r = el.querySelector(`[data-key="${CSS.escape(refocus)}"]`); if (r && document.activeElement !== r) r.focus(); }
+    // only when the move took focus off the row, never away from a terminal the owner clicked since
+    if (refocus) {
+      const r = el.querySelector(`[data-key="${CSS.escape(refocus)}"]`), a = document.activeElement;
+      if (r && a !== r && (!a || a === document.body || el.contains(a))) { r.focus(); refocus = null; }
+    }
   }
 
   // folders move within their machine and chats within their folder; the whole new order goes to H.onReorder

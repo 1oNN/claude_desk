@@ -32,7 +32,7 @@ const Stack = (() => {
     sort(v, rank);
   }
 
-  function removeFrom(v, id) {
+  function cut(v, id) {
     const i = v.slots.indexOf(id);
     if (i < 0) return;
     v.slots.splice(i, 1); v.slots.push(null);
@@ -41,6 +41,20 @@ const Stack = (() => {
     if (v.focus > i || v.focus >= v.n) v.focus = Math.max(0, v.focus - 1);
   }
 
-  return { MAX, rank, sort, add, removeFrom };
+  // a maximised stack keeps the full list in restore, so the chat leaves that too
+  function removeFrom(v, id) {
+    cut(v, id);
+    if (v.restore) cut(v.restore, id);
+  }
+
+  // chats forgotten in another window leave this stack as well
+  function prune(v, snap) {
+    const live = new Set(snap.sessions.map(s => s.id));
+    const gone = new Set([...v.slots, ...(v.restore ? v.restore.slots : [])].filter(id => id && !live.has(id)));
+    for (const id of gone) removeFrom(v, id);
+    return gone.size > 0;
+  }
+
+  return { MAX, rank, sort, add, removeFrom, prune };
 })();
 if (typeof module !== 'undefined') module.exports = Stack;
