@@ -4,6 +4,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const C = require('./consts');
 const stateMod = require('./state');
+const { sortProjects, reorderSessions } = require('./order');
 const reg = require('./registry');
 const memory = require('./memory');
 const accounts = require('./accounts');
@@ -85,7 +86,7 @@ function pcProjects() {
   } catch { /* no projects root */ }
   for (const p of state.extraProjects) if (p.machine === 'pc') dirs.add(p.dir);
   for (const s of state.sessions) if (s.machine === 'pc') dirs.add(s.project);
-  return [...dirs].sort((a, b) => path.basename(a).localeCompare(path.basename(b), undefined, { sensitivity: 'base' }))
+  return sortProjects([...dirs], state.projectOrder.pc, path.basename)
     .map(dir => ({ key: key('pc', dir), machine: 'pc', dir, name: path.basename(dir) }));
 }
 
@@ -93,7 +94,7 @@ function laptopProjects() {
   const dirs = new Set(laptop.projects);
   for (const p of state.extraProjects) if (p.machine === 'laptop') dirs.add(p.dir);
   for (const s of state.sessions) if (s.machine === 'laptop') dirs.add(s.project);
-  return [...dirs].sort((a, b) => path.posix.basename(a).localeCompare(path.posix.basename(b), undefined, { sensitivity: 'base' }))
+  return sortProjects([...dirs], state.projectOrder.laptop, path.posix.basename)
     .map(dir => ({ key: key('laptop', dir), machine: 'laptop', dir, name: path.posix.basename(dir) }));
 }
 
@@ -681,6 +682,16 @@ handle('desk:rename', (_e, id, title) => {
   stateMod.save(state); pushSnapshot();
   log('rename', s.name, t || '(back to its own name)');
   return { name: t || s.name };
+});
+// the order dragged in the sidebar; a folder list replaces that machine's list, chat ids swap their order numbers
+handle('desk:reorder', (_e, o) => {
+  if (o && o.kind === 'projects' && (o.machine === 'pc' || o.machine === 'laptop') && Array.isArray(o.dirs) && o.dirs.every(d => typeof d === 'string')) {
+    state.projectOrder[o.machine] = o.dirs.slice(0, 1000);
+  } else if (o && o.kind === 'sessions' && Array.isArray(o.ids)) {
+    if (!reorderSessions(state.sessions, o.ids)) return { error: 'Those chats are not all in one folder' };
+  } else return { error: 'Nothing to reorder' };
+  stateMod.save(state); pushSnapshot();
+  return { ok: true };
 });
 handle('desk:attach', async (e, id, cols, rows) => {
   const s = byId(id); if (!s) return { replay: '' };

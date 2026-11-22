@@ -23,6 +23,8 @@ function load() {
   let s = {};
   try { s = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch { s = {}; }
   s.extraProjects = s.extraProjects || [];
+  const po = s.projectOrder && typeof s.projectOrder === 'object' ? s.projectOrder : {};
+  s.projectOrder = { pc: Array.isArray(po.pc) ? po.pc : [], laptop: Array.isArray(po.laptop) ? po.laptop : [] };
   s.sessions = s.sessions || [];
   s.ui = s.ui && typeof s.ui === 'object' ? s.ui : {};
   return migrate(s);
@@ -37,6 +39,7 @@ function cleanTitle(title, name) {
 function shape(state) {
   return {
     extraProjects: state.extraProjects,
+    projectOrder: state.projectOrder,
     sessions: state.sessions.map(s => ({ id: s.id, machine: s.machine, project: s.project, account: s.account, kind: s.kind, name: s.name, sid: s.sid, cwd: s.cwd, tag: s.tag, order: s.order, title: s.title })),
     ui: state.ui,
     windows: state.windows,

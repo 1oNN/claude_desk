@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('desk', {
   say: (projectKey, text) => ipcRenderer.invoke('desk:say', projectKey, text),
   setUi: ui => ipcRenderer.send('desk:ui', ui),
   addProject: (machine, dir) => ipcRenderer.invoke('desk:addProject', machine, dir),
+  reorder: o => ipcRenderer.invoke('desk:reorder', o),
   laptopReconnect: () => ipcRenderer.invoke('desk:laptopReconnect'),
   memoryNow: () => ipcRenderer.invoke('desk:memoryNow'),
   log: s => ipcRenderer.send('desk:log', s),
