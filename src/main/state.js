@@ -4,7 +4,7 @@ const { STATE_DIR } = require('./consts');
 
 const FILE = path.join(STATE_DIR, 'desk.json');
 // what each window keeps for itself; everything else in ui is an app-wide preference
-const LAYOUT_KEYS = ['current', 'views', 'nav', 'sidebar', 'expanded'];
+const LAYOUT_KEYS = ['current', 'views', 'nav', 'sidebar', 'expanded', 'stack'];
 
 function migrate(s) {
   s.windows = Array.isArray(s.windows) ? s.windows.filter(w => w && typeof w === 'object') : [];

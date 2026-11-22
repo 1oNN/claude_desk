@@ -521,8 +521,8 @@ function boot() {
   // each resumed Claude session is 400 MB or more of RAM, so by default only the panes of the project last shown come back
   const open = new Set();
   if (C.RESUME === 'current') for (const w of state.windows) {
-    const view = w.current && w.views && w.views[w.current];
-    if (view) for (const id of view.slots || []) if (id) open.add(id);
+    const view = w.stack ? w.views && w.views['*'] : w.current && w.views && w.views[w.current];
+    if (view) for (const id of (view.slots || []).slice(0, view.n || 1)) if (id) open.add(id);
   }
   start = { policy: C.RESUME, started: 0, waiting: 0, saved: 0 };
   for (const s of state.sessions.filter(x => x.machine === 'pc').sort((a, b) => a.order - b.order)) {

@@ -58,7 +58,7 @@ const Sidebar = (() => {
     return JSON.stringify([
       snap.projects.map(p => [p.key, p.badge, p.mem, p.foreign.map(f => [f.name, f.regStatus, f.mem, f.account])]),
       snap.sessions.map(s => [s.id, s.name, s.status, s.state, s.glyph, s.label, s.now, s.mem, s.elsewhere, s.error, s.account, s.order]),
-      snap.laptop, snap.totals, snap.owners, ui.current, ui.expanded, ui.views[ui.current], ui.showMem, ui.picker,
+      snap.laptop, snap.totals, snap.owners, ui.current, ui.stack, ui.expanded, ui.views[ui.stack ? '*' : ui.current], ui.showMem, ui.picker,
     ]);
   }
 
@@ -223,7 +223,7 @@ ${s.label}` : line || null);
 
   function items(snap, ui) {
     const out = [];
-    const view = ui.views[ui.current] || { slots: [], focus: 0 };
+    const view = ui.views[ui.stack ? '*' : ui.current] || { slots: [], focus: 0 };
     const placed = new Set(view.slots.filter(Boolean));
     const focusedId = view.slots[view.focus];
     const showMem = !!ui.showMem;

@@ -1,6 +1,6 @@
 let snap = null;
 let myWid = null; // which Desk window this page is
-const LAYOUT_KEYS = ['current', 'views', 'nav', 'sidebar', 'expanded'];
+const LAYOUT_KEYS = ['current', 'views', 'nav', 'sidebar', 'expanded', 'stack'];
 let ui = { current: null, views: {}, expanded: {}, lastAccount: {}, nav: 'projects', theme: '', sidebar: { w: 300, collapsed: false, hidden: false }, showMem: false, picker: {}, flash: true, notify: false, uiScale: 1, termFont: 14, zoom: {}, termZoom: {} };
 const NAVS = ['home', 'projects', 'attention', 'usage', 'settings'];
 let dragId = null;
@@ -26,6 +26,45 @@ function view(key) {
   v.n = Math.min(MAXP, Math.max(1, v.n || 1));
   v.focus = Math.min(v.n - 1, Math.max(0, v.focus || 0));
   return v;
+}
+// the stack view lives under its own key; ui.current then follows the focused pane's project
+const STACK = '*';
+function curView() {
+  if (!ui.stack) return view(ui.current);
+  const v = view(STACK); v.stack = true;
+  return v;
+}
+const hasWork = () => !!(ui.stack || ui.current);
+function setCurrentFromFocus() {
+  const v = curView(), s = sessionById(v.slots[v.focus]), k = s && s.machine + ':' + s.project;
+  if (k && projectByKey(k)) ui.current = k;
+}
+function stackAdd(id) {
+  const v = curView();
+  // a maximised stack comes back to its full height before the new chat joins it
+  if (v.n === 1 && v.restore) { v.slots = v.restore.slots.slice(); v.n = v.restore.n; v.focus = v.restore.focus; }
+  v.restore = null;
+  Stack.add(v, id, Stack.rank(snap));
+  setCurrentFromFocus(); ui.nav = 'projects';
+  saveUi(); renderAll(); renderSlots();
+  flashPlace(id, v.focus);
+  Terminals.focus(id);
+}
+function setStack(on) {
+  if (!!ui.stack === on) return;
+  const id = focusedId();
+  ui.stack = on;
+  if (on) {
+    const v = curView();
+    if (id && !v.slots.slice(0, v.n).some(x => x && sessionById(x))) Stack.add(v, id, Stack.rank(snap));
+    else Stack.sort(v, Stack.rank(snap));
+    setCurrentFromFocus();
+    if (ui.current) ui.nav = 'projects';
+  } else if (id) {
+    const v = curView();
+    if (!v.slots.slice(0, v.n).some(x => x && sessionById(x))) v.slots[v.focus] = id;
+  }
+  saveUi(); renderAll(); renderSlots();
 }
 const saveUi = () => desk.setUi(ui);
 
@@ -80,7 +119,8 @@ async function restartToUpdate() {
 const H = {
   onProject: key => showProject(key),
   onToggle: (key, open) => { ui.expanded[key] = open; saveUi(); renderSidebar(); },
-  onSession: s => { const w = awayWin(s.id); if (w) { desk.focusWindow(w.wid); return; } if (s.machine + ':' + s.project !== ui.current) showProject(s.machine + ':' + s.project); placeInFocused(s.id); },
+  onSession: s => { const w = awayWin(s.id); if (w) { desk.focusWindow(w.wid); return; } if (ui.stack) { stackAdd(s.id); return; } if (s.machine + ':' + s.project !== ui.current) showProject(s.machine + ':' + s.project); placeInFocused(s.id); },
+  onReorder: async o => { const r = await desk.reorder(o); if (r && r.error) toast(r.error, 'error'); },
   awayN: s => { const w = awayWin(s.id); return w ? w.n : 0; },
   onNewSession: p => { showProject(p.key); newSession('claude'); },
   onStop: s => { if (confirm(`Stop ${s.name}? It can be resumed later from the sidebar.`)) desk.stopSession(s.id); },
@@ -126,7 +166,7 @@ const STATE_COLOUR = { working: 'working', waiting: 'waiting', finished: 'finish
 function renderShell() {
   const nav = NAVS.includes(ui.nav) ? ui.nav : 'projects';
   for (const b of $$('#activity .act')) { b.classList.toggle('on', b.dataset.nav === nav); Dom.attr(b, 'aria-current', b.dataset.nav === nav ? 'page' : null); }
-  $('#home').hidden = nav === 'settings' || nav === 'usage' || !(nav === 'home' || nav === 'attention' || !ui.current);
+  $('#home').hidden = nav === 'settings' || nav === 'usage' || !(nav === 'home' || nav === 'attention' || !hasWork());
   $('#usage-page').hidden = nav !== 'usage';
   renderZoom();
   applyZoom();
@@ -633,9 +673,10 @@ let lastTabSig = '';
 function renderTabs() {
   const tabs = $('#tabs');
   const p = currentProject();
-  $('#panes-btn').disabled = !p;
+  $('#panes-btn').disabled = !p || !!ui.stack;
+  const sb = $('#stack-btn'); sb.classList.toggle('on', !!ui.stack); sb.setAttribute('aria-pressed', ui.stack ? 'true' : 'false');
   if (!p) { Dom.keyed(tabs, [], () => '', () => null, () => {}); lastTabSig = ''; return; }
-  const v = view(ui.current);
+  const v = curView();
   const sessions = snap.sessions.filter(s => s.machine === p.machine && s.project === p.dir).sort((a, b) => a.order - b.order);
   const sig = JSON.stringify([sessions.map(s => [s.id, s.name, s.glyph, s.status, s.state, s.account, (awayWin(s.id) || {}).n]), v.slots, v.focus, v.n]);
   for (const b of $$('#panespop .split')) { b.classList.toggle('on', Number(b.dataset.n) === v.n); b.setAttribute('aria-checked', Number(b.dataset.n) === v.n ? 'true' : 'false'); }
@@ -765,7 +806,7 @@ const paneMenu = (() => {
     return r;
   };
   function build(i) {
-    const v = view(ui.current), s = sessionById(v.slots[i]);
+    const v = curView(), s = sessionById(v.slots[i]);
     const rows = Dom.h('div', 'rows');
     el.replaceChildren(Dom.h('div', 'caps', `New Claude session in pane ${i + 1}`), rows, Dom.h('div', 'line'), act('shell', 'i-terminal', 'New shell in this pane'));
     if (s) {
@@ -807,7 +848,7 @@ const paneMenu = (() => {
 })();
 $('#slots').addEventListener('contextmenu', e => {
   const slot = e.target.closest('.slot');
-  if (!slot || !ui.current || (e.target.closest('.termwrap') && !e.shiftKey)) return;
+  if (!slot || !hasWork() || (e.target.closest('.termwrap') && !e.shiftKey)) return;
   e.preventDefault();
   const i = Number(slot.dataset.i);
   focusSlot(i);
@@ -849,7 +890,7 @@ function newSessionRows() {
 $('#tabbar').addEventListener('contextmenu', e => {
   if (!ui.current || !window.Menubar || e.target.closest('.pop, #tab-actions button')) return;
   e.preventDefault();
-  const id = tabOf(e), s = id && sessionById(id), v = view(ui.current);
+  const id = tabOf(e), s = id && sessionById(id), v = curView();
   const rows = [];
   if (s) {
     const away = awayWin(id);
@@ -869,8 +910,8 @@ $('#tabs').addEventListener('dragend', e => { dragId = null; const t = e.target.
 
 function renderSlots() {
   const slotsEl = $('#slots');
-  const v = view(ui.current);
-  slotsEl.className = 'lay n' + v.n;
+  const v = curView();
+  slotsEl.className = 'lay n' + v.n + (v.stack ? ' stack' : '');
   const want = new Set();
   for (let i = 0; i < v.n; i++) if (v.slots[i] && sessionById(v.slots[i])) want.add(v.slots[i]);
   // anything not shown in this view goes back to the pool; it keeps running
@@ -902,7 +943,9 @@ function renderSlots() {
       if ((s.status === 'stopped' || s.status === 'exited') && !Terminals.hasOverlay(id)) Terminals.overlay(id, notStartedCopy(s), true);
     } else {
       for (const w of slot.querySelectorAll(':scope > .termwrap')) Terminals.unplace(w.dataset.id);
-      if (!slot.querySelector('.slot-empty')) { const e = document.createElement('div'); e.className = 'slot-empty'; e.textContent = 'click a tab, or drag one here'; slot.appendChild(e); }
+      let e = slot.querySelector('.slot-empty');
+      if (!e) { e = document.createElement('div'); e.className = 'slot-empty'; slot.appendChild(e); }
+      Dom.text(e, v.stack ? 'click a chat on the left to stack it here' : 'click a tab, or drag one here');
     }
   }
   layoutSlots();
@@ -916,20 +959,22 @@ const paneEls = () => [...$('#slots').querySelectorAll(':scope > .slot')];
 const ROWS = { 1: [1], 2: [2], 3: [2, 1], 4: [2, 2], 5: [3, 2], 6: [3, 3], 7: [4, 3], 8: [4, 4] };
 const GAP = 3, MIN_W = 160, MIN_H = 90;
 // row heights and each row's column widths as fractions, kept per pane count so going 4 to 2 and back keeps the 4
+// the stack view is one pane per row
+const rowsOf = v => v.stack ? Array(v.n).fill(1) : ROWS[v.n];
 function splits(v) {
-  const rows = ROWS[v.n];
+  const rows = rowsOf(v);
   if (!v.sizes || typeof v.sizes !== 'object') v.sizes = {};
   const s = v.sizes[v.n];
   const ok = s && Array.isArray(s.r) && s.r.length === rows.length && Array.isArray(s.c) && s.c.length === rows.length && s.c.every((c, j) => Array.isArray(c) && c.length === rows[j]);
-  return ok ? s : (v.sizes[v.n] = evenSplit(v.n));
+  return ok ? s : (v.sizes[v.n] = evenSplit(rows));
 }
-const evenSplit = n => ({ r: ROWS[n].map(() => 1 / ROWS[n].length), c: ROWS[n].map(k => Array(k).fill(1 / k)) });
+const evenSplit = rows => ({ r: rows.map(() => 1 / rows.length), c: rows.map(k => Array(k).fill(1 / k)) });
 const edges = fr => { const e = [0]; for (const f of fr) e.push(e[e.length - 1] + f); e[e.length - 1] = 1; return e; };
 // a pane edge inside the area gives half the gap to its neighbour
 const span = (a, b) => [`calc(${GAP}px + (100% - ${2 * GAP}px) * ${a} + ${a > 0 ? GAP / 2 : 0}px)`, `calc((100% - ${2 * GAP}px) * ${b - a} - ${(a > 0 ? GAP / 2 : 0) + (b < 1 ? GAP / 2 : 0)}px)`];
 const sashAt = a => `calc(${GAP}px + (100% - ${2 * GAP}px) * ${a})`;
 function layoutSlots() {
-  const el = $('#slots'), v = view(ui.current), s = splits(v), panes = paneEls(), ye = edges(s.r), keep = new Set();
+  const el = $('#slots'), v = curView(), s = splits(v), panes = paneEls(), ye = edges(s.r), keep = new Set();
   const sash = (key, dir, title) => {
     keep.add(key);
     let d = el.querySelector(`:scope > .psash[data-k="${key}"]`);
@@ -971,7 +1016,7 @@ function sashTargets(s, key) {
   return { rows: false, k, cols };
 }
 function moveSash(key, px, base) {
-  const s = splits(view(ui.current)), t = sashTargets(base, key), box = $('#slots').getBoundingClientRect();
+  const s = splits(curView()), t = sashTargets(base, key), box = $('#slots').getBoundingClientRect();
   if (t.rows) { s.r = base.r.slice(); nudge(s.r, t.k, px / Math.max(1, box.height - 2 * GAP), MIN_H / Math.max(1, box.height)); }
   else for (const j of t.cols) { s.c[j] = base.c[j].slice(); nudge(s.c[j], t.k, px / Math.max(1, box.width - 2 * GAP), MIN_W / Math.max(1, box.width)); }
   layoutSlots(); refitSoon();
@@ -984,7 +1029,7 @@ function moveSash(key, px, base) {
     const d = e.target.closest('.psash'); if (!d || e.button !== 0) return;
     e.preventDefault(); d.setPointerCapture(e.pointerId);
     const v = d.classList.contains('v');
-    drag = { key: d.dataset.k, v, x: e.clientX, y: e.clientY, base: copy(splits(view(ui.current))) };
+    drag = { key: d.dataset.k, v, x: e.clientX, y: e.clientY, base: copy(splits(curView())) };
     el.classList.add('dragging', v ? 'drag-v' : 'drag-h'); d.classList.add('on');
   });
   el.addEventListener('pointermove', e => { if (drag) moveSash(drag.key, drag.v ? e.clientX - drag.x : e.clientY - drag.y, drag.base); });
@@ -997,7 +1042,7 @@ function moveSash(key, px, base) {
   el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('lostpointercapture', end);
   el.addEventListener('dblclick', e => {
     const d = e.target.closest('.psash'); if (!d) return;
-    const v = view(ui.current), s = splits(v), even = evenSplit(v.n), t = sashTargets(s, d.dataset.k);
+    const v = curView(), s = splits(v), even = evenSplit(rowsOf(v)), t = sashTargets(s, d.dataset.k);
     if (t.rows) s.r = even.r; else for (const j of t.cols) s.c[j] = even.c[j];
     saveUi(); layoutSlots(); Terminals.fitAll();
   });
@@ -1007,7 +1052,7 @@ function moveSash(key, px, base) {
     const v = d.classList.contains('v'), fwd = v ? 'ArrowRight' : 'ArrowDown', back = v ? 'ArrowLeft' : 'ArrowUp';
     const dir = e.key === fwd ? 1 : e.key === back ? -1 : 0;
     if (!dir) return;
-    e.preventDefault(); moveSash(d.dataset.k, dir * (e.shiftKey ? 80 : 16), copy(splits(view(ui.current)))); saveUi();
+    e.preventDefault(); moveSash(d.dataset.k, dir * (e.shiftKey ? 80 : 16), copy(splits(curView()))); saveUi();
   });
 }
 // what runs in the pane, and that pane's own text size
@@ -1037,7 +1082,7 @@ function slotHead() {
 }
 // the pane head buttons and the pane menu share these
 function paneAct(a, i, wid) {
-  const v = view(ui.current), id = v.slots[i];
+  const v = curView(), id = v.slots[i];
   if (a === 'split') { if (v.n < MAXP) { setSplit(v.n + 1); focusSlot(v.n - 1); } }
   else if (a === 'max') toggleMax(i);
   else if (a === 'out') { if (id) desk.moveSession(id, 'new'); }
@@ -1047,7 +1092,7 @@ function paneAct(a, i, wid) {
 }
 // one pane fills the area; the same button puts the old layout back, with this session where it was
 function toggleMax(i) {
-  const v = view(ui.current);
+  const v = curView();
   if (v.n === 1 && v.restore) {
     const r = v.restore, id = v.slots[0];
     v.restore = null; v.slots = r.slots.slice(); v.n = r.n; v.focus = r.focus;
@@ -1062,14 +1107,14 @@ function toggleMax(i) {
   if (v.slots[v.focus]) Terminals.focus(v.slots[v.focus]);
 }
 function renderPaneHeads() {
-  if (!ui.current) return;
+  if (!hasWork()) return;
   for (const slot of $$('#slots > .slot')) {
     const h = slot.querySelector(':scope > .slot-head'); if (!h) continue;
     const s = sessionById(slot.dataset.sid);
     h.hidden = !s; if (!s) continue;
     const [dot, nm, lb, pz, pa] = h.children, st = stateOf(s), word = STATE_WORD[st] || st;
-    const v = view(ui.current), maxed = v.n === 1 && !!v.restore, mx = pa.children[1];
-    pa.children[0].hidden = v.n >= MAXP;
+    const v = curView(), maxed = v.n === 1 && !!v.restore, mx = pa.children[1];
+    pa.children[0].hidden = v.n >= MAXP || !!v.stack;
     mx.hidden = v.n === 1 && !maxed;
     pa.children[3].hidden = v.n < 2;
     const mt = maxed ? `Restore the ${v.restore.n} panes` : 'Maximise this pane';
@@ -1077,7 +1122,8 @@ function renderPaneHeads() {
     pa.classList.toggle('on', maxed);
     const col = `var(--st-${STATE_COLOUR[st] || 'idle'})`;
     if (dot.style.getPropertyValue('--st') !== col) dot.style.setProperty('--st', col);
-    Dom.text(nm, s.name);
+    const sp = v.stack && projectByKey(s.machine + ':' + s.project);
+    Dom.text(nm, sp ? `${sp.name} / ${s.name}` : s.name);
     Dom.text(lb, s.label ? `${word}, ${s.label}` : word);
     Dom.attr(lb, 'title', s.label || null);
     const pct = panePct(s.id);
@@ -1100,7 +1146,7 @@ function renderProjbar() {
   if (wk) parts.push(`${wk} working`);
   if (at) parts.push(`${at} need${at === 1 ? 's' : ''} you`);
   Dom.text($('#pb-count'), parts.join(', '));
-  const v = view(ui.current), used = v.slots.slice(0, v.n).filter(id => id && sessionById(id)).length;
+  const v = curView(), used = v.slots.slice(0, v.n).filter(id => id && sessionById(id)).length;
   Dom.text($('#pb-panes'), `${used} of ${v.n} pane${v.n === 1 ? '' : 's'} in use`);
 }
 
@@ -1114,17 +1160,18 @@ function showProject(key) {
 }
 
 function focusSlot(i) {
-  const v = view(ui.current);
+  const v = curView();
   if (v.focus === i) return;
   v.focus = i;
   saveUi();
   for (const [j, s] of paneEls().entries()) s.classList.toggle('focused', j === i);
-  renderTabs(); renderSidebar();
+  if (ui.stack) { setCurrentFromFocus(); saveUi(); renderAll(); } else { renderTabs(); renderSidebar(); }
   if (v.slots[i]) Terminals.focus(v.slots[i]);
 }
 
 function placeInSlot(id, i) {
-  const v = view(ui.current);
+  if (ui.stack) return stackAdd(id);
+  const v = curView();
   const prev = v.slots.indexOf(id);
   if (prev >= 0 && prev !== i) v.slots[prev] = v.slots[i] || null;
   v.slots[i] = id;
@@ -1144,7 +1191,8 @@ function flashPlace(id, i) {
 }
 
 function placeInFocused(id) {
-  const v = view(ui.current);
+  if (ui.stack) return stackAdd(id);
+  const v = curView();
   const idx = v.slots.indexOf(id);
   if (idx >= 0 && idx < v.n) { focusSlot(idx); Terminals.focus(id); return; }
   placeInSlot(id, v.focus);
@@ -1153,7 +1201,8 @@ function placeInFocused(id) {
 // keys the window claims; anything not here reaches the terminal untouched
 const KEYMAP = [
   { code: /^Digit[1-8]$/, shift: false, run: e => focusPane(Number(e.code[5]) - 1) },
-  { code: /^Digit[1-8]$/, shift: true, run: e => { if (ui.current) setSplit(Number(e.code[5])); } },
+  { code: /^Digit[1-8]$/, shift: true, run: e => { if (ui.current && !ui.stack) setSplit(Number(e.code[5])); } },
+  { code: 'KeyS', shift: true, run: () => setStack(!ui.stack) },
   { code: 'Tab', shift: false, run: () => cycleTab(1) },
   { code: 'Tab', shift: true, run: () => cycleTab(-1) },
   { code: 'KeyB', shift: false, run: () => toggleSidebar() },
@@ -1274,7 +1323,7 @@ function zoomAt(t, d) {
   if (t.pane) { if (d) paneStep(t.pane, d); else setPaneSize(t.pane, null); return; }
   regionStep(t.region, d);
 }
-const focusedId = () => { if (!ui.current) return null; const v = view(ui.current), id = v.slots[v.focus]; return id && sessionById(id) ? id : null; };
+const focusedId = () => { if (!hasWork()) return null; const v = curView(), id = v.slots[v.focus]; return id && sessionById(id) ? id : null; };
 // the keys follow focus: the terminal you type in, or the part a focused button sits in
 function zoomKey(d) {
   let t = zoomTarget(document.activeElement);
@@ -1336,7 +1385,7 @@ const keysPop = {
       el.hidden = true;
       const back = keysBack; keysBack = null;
       if (back && back.isConnected && back !== document.body) back.focus();
-      else { const v = view(ui.current); if (v.slots[v.focus]) Terminals.focus(v.slots[v.focus]); }
+      else { const v = curView(); if (v.slots[v.focus]) Terminals.focus(v.slots[v.focus]); }
     }
   },
 };
@@ -1414,16 +1463,17 @@ async function changePath(what, key, from, msg) {
   toast(msg);
 }
 function focusPane(i) {
-  if (!ui.current) return;
-  const v = view(ui.current);
+  if (!hasWork()) return;
+  const v = curView();
   if (i >= v.n) return;
   focusSlot(i);
   if (v.slots[i]) Terminals.focus(v.slots[i]);
 }
 // next or previous session into the focused pane, skipping ones already shown in another pane
 function cycleTab(dir) {
+  if (ui.stack) { const v = curView(); if (v.n > 1) focusPane((v.focus + dir + v.n) % v.n); return; }
   const p = currentProject(); if (!p) return;
-  const v = view(ui.current);
+  const v = curView();
   const cur = v.slots[v.focus];
   const shownElsewhere = new Set(v.slots.slice(0, v.n).filter((id, j) => id && j !== v.focus));
   const list = snap.sessions.filter(s => s.machine === p.machine && s.project === p.dir && !shownElsewhere.has(s.id)).sort((a, b) => a.order - b.order);
@@ -1434,7 +1484,8 @@ function cycleTab(dir) {
 }
 
 function setSplit(n) {
-  const v = view(ui.current);
+  if (ui.stack) return;
+  const v = curView();
   v.n = n; v.restore = null;
   if (v.focus >= n) v.focus = n - 1;
   saveUi();
@@ -1450,18 +1501,18 @@ async function newSession(kind, pick, slotAt) {
   if (kind !== 'shell') { ui.lastAccount[p.machine] = account; }
   const s = await desk.startSession({ machine: p.machine, project: p.dir, account, kind });
   snap.sessions.push(s);
-  const v = view(ui.current);
+  const v = curView();
   let slot = slotAt ?? v.slots.indexOf(null);
   if (slot < 0 || slot >= v.n) slot = v.focus;
   placeInSlot(s.id, slot);
 }
 function emptyPane(i) {
-  view(ui.current).slots[i] = null;
+  curView().slots[i] = null;
   saveUi(); renderSlots(); renderTabs(); renderSidebar(true);
 }
 // the panes after it move up one; its session, if any, stays running as a tab
 function closePane(i) {
-  const v = view(ui.current);
+  const v = curView();
   if (v.n < 2) return emptyPane(i);
   v.slots.splice(i, 1); v.slots.push(null); v.n--;
   if (v.focus > i || v.focus >= v.n) v.focus = Math.max(0, v.focus - 1);
@@ -1474,6 +1525,7 @@ async function forget(id, transcript) {
   if (transcript) toast(r && r.ok ? 'Session closed and its transcript deleted' : `Session closed, but the transcript was not deleted: ${(r && r.error) || 'unknown error'}`, r && r.ok ? undefined : 'error');
   Terminals.dispose(id);
   delete ui.termZoom[id];
+  if (ui.views[STACK]) Stack.removeFrom(view(STACK), id);
   for (const v of Object.values(ui.views)) if (v.slots) v.slots = v.slots.map(x => x === id ? null : x);
   saveUi();
   if (snap) snap.sessions = snap.sessions.filter(s => s.id !== id);
@@ -1502,7 +1554,8 @@ const COMMANDS = [
   { id: 'statusbar', name: () => ui.statusHidden ? 'Show the status bar' : 'Hide the status bar', run: () => { ui.statusHidden = !ui.statusHidden; saveUi(); renderShell(); } },
   { id: 'fullscreen', name: 'Full screen', key: 'F11', run: () => desk.fullScreen() },
   { id: 'addlaptop', name: 'Add a laptop folder', sub: 'type its path', when: () => !!(snap && snap.laptop && snap.laptop.status === 'online'), run: () => openPalette('folder') },
-  ...['One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight'].map((w, i) => ({ id: 'split' + (i + 1), name: `${w} pane${i ? 's' : ''}`, key: `Ctrl+Shift+${i + 1}`, when: inProject, run: () => setSplit(i + 1) })),
+  ...['One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight'].map((w, i) => ({ id: 'split' + (i + 1), name: `${w} pane${i ? 's' : ''}`, key: `Ctrl+Shift+${i + 1}`, when: () => inProject() && !ui.stack, run: () => setSplit(i + 1) })),
+  { id: 'stack', name: 'Stack view', key: 'Ctrl+Shift+S', sub: () => ui.stack ? 'on: turn it off to get the project grid back' : 'chats from every project, one above the other', run: () => setStack(!ui.stack) },
   { id: 'sidebar', name: () => ui.sidebar.collapsed ? 'Show the sidebar' : 'Hide the sidebar', key: 'Ctrl+B', run: () => toggleSidebar() },
   { id: 'panel', name: () => ui.sidebar.hidden ? 'Show the left panel' : 'Hide the left panel', sub: 'the icons and the sidebar together', key: 'Ctrl+Shift+B', run: () => togglePanel() },
   { id: 'home', name: 'Desk home', sub: 'every session, the ones that need you first', run: () => showNav('home') },
@@ -1675,7 +1728,7 @@ function closePalette() {
   pal.hidden = true;
   const back = PAL.back; PAL.back = null; PAL.mode = null;
   if (back && back.isConnected && back !== document.body) back.focus();
-  else { const v = view(ui.current); if (v.slots[v.focus]) Terminals.focus(v.slots[v.focus]); }
+  else { const v = curView(); if (v.slots[v.focus]) Terminals.focus(v.slots[v.focus]); }
 }
 function palMove(d) {
   const n = PAL.items.length; if (!n) return;
@@ -1748,6 +1801,7 @@ $('#pal-list').addEventListener('click', e => {
 });
 $('#palette').addEventListener('mousedown', e => { if (e.target === e.currentTarget) closePalette(); });
 $('#say-btn').onclick = () => openPalette('say');
+$('#stack-btn').onclick = () => setStack(!ui.stack);
 
 // ---------- wiring ----------
 async function init() {
@@ -1774,11 +1828,12 @@ async function init() {
   // xterm measures the cell once when a terminal opens, so the font has to be in before the first one
   try { await document.fonts.load(`${ui.termFont}px "Cascadia Mono"`); } catch { /* falls back to Consolas */ }
   if (ui.current && !projectByKey(ui.current)) ui.current = null;
+  if (ui.stack) { Stack.sort(curView(), Stack.rank(snap)); setCurrentFromFocus(); }
   applyTheme();
   applyAccountColours();
   renderAll();
   document.documentElement.dataset.ready = '1';
-  if (ui.current) renderSlots();
+  if (hasWork()) renderSlots();
   Terminals.setFontFamily(ui.termFamily);
   Welcome.check();
 }
@@ -1787,6 +1842,13 @@ desk.onSnapshot(s => {
   snap = s;
   applyAccountColours();
   if (ui.current && !projectByKey(ui.current)) { ui.current = null; renderSlots(); }
+  // the stack keeps sidebar order when a folder or chat is dragged, here or in another window
+  if (ui.stack) {
+    const v = curView(), before = v.slots.join();
+    Stack.sort(v, Stack.rank(snap));
+    if (!ui.current) setCurrentFromFocus();
+    if (v.slots.join() !== before) { saveUi(); renderSlots(); }
+  }
   renderAll();
   notifyTransitions();
   Welcome.check();
@@ -1796,6 +1858,7 @@ desk.onData((id, d) => Terminals.write(id, d));
 // another window took this session: its pane here empties and its xterm goes, so nothing keeps parsing for nobody
 desk.onReleased(id => {
   let changed = false;
+  if (ui.views[STACK] && ui.views[STACK].slots && ui.views[STACK].slots.includes(id)) { Stack.removeFrom(view(STACK), id); changed = true; }
   for (const v of Object.values(ui.views)) if (v && v.slots) v.slots = v.slots.map(x => { if (x === id) { changed = true; return null; } return x; });
   Terminals.dispose(id);
   if (changed) { saveUi(); renderSlots(); renderTabs(); renderSidebar(true); }
@@ -1803,9 +1866,10 @@ desk.onReleased(id => {
 // a session moved here from another window
 desk.onPlace(id => {
   const s = sessionById(id); if (!s) return;
+  if (ui.stack) return stackAdd(id);
   const k = s.machine + ':' + s.project;
   if (ui.current !== k) showProject(k);
-  const v = view(ui.current);
+  const v = curView();
   const free = v.slots.slice(0, v.n).indexOf(null);
   placeInSlot(id, free >= 0 ? free : v.focus);
 });

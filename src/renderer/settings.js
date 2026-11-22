@@ -10,6 +10,7 @@ const KEYS_LIST = [
   ['Ctrl+Shift+M', 'move this pane to a new window'],
   ['Ctrl+1 to 8', 'focus that pane'],
   ['Ctrl+Shift+1 to 8', 'one to eight panes'],
+  ['Ctrl+Shift+S', 'stack view: chats from every project in one stack'],
   ['Ctrl+Tab', 'next session in the pane'],
   ['Ctrl+Shift+Tab', 'previous session in the pane'],
   ['Ctrl+B', 'hide or show the sidebar'],
